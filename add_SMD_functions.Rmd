@@ -1,0 +1,202 @@
+---
+title: "Functions to add SMDs in gtsummary tables"
+author: "Zheer"
+date: "2023-11-03"
+output: html_document
+---
+
+##### First, we load dependencies
+
+```{r, results='hide'}
+
+library(gtsummary) # For creating a baseline characteristics table
+library(tidyverse) # For data wrangling and misc.
+
+```
+
+##### Then, we create the core function that takes the data and outputs the SMD results
+
+```{r, results='hide'}
+
+core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
+  # MAKE A TABLE OF EVERY POSSIBLE COMBO OF TWO DIFFERENT GROUPS
+  groups <- factor(unique(data$by))
+  pairs <- expand.grid(groups, groups) %>%
+    arrange(as.integer(.data$Var1), as.integer(.data$Var2)) %>% 
+    filter(Var1 != Var2) %>%
+    filter(!duplicated(
+      paste0(pmax(as.character(Var1), as.character(Var2)), 
+             pmin(as.character(Var1), as.character(Var2)))))
+  if (ref_group) { # IF ref_group, KEEP ONLY PAIRS CONTAINING THE REF GROUP
+    pairs <- pairs %>% filter(Var1 == first(levels(groups)))
+  }
+  name_comparison <- function(pair) {
+    filtered_data <- data %>% filter(by %in% pair) %>% mutate(by = factor(by))
+    paste(levels(filtered_data$by)[1], levels(filtered_data$by)[2], sep = " vs. ")
+  }
+  comparisons <- apply(pairs, 1, name_comparison)
+  
+  # CREATE SUBSETS OF DATA
+  subsetting <- function(pair, data) {
+    as.data.frame(data) %>%
+      filter(by %in% pair) %>%
+      mutate(by = factor(by)) %>%
+      droplevels()
+  }
+  
+  data_subsets <- apply(X = pairs, MARGIN = 1, FUN = subsetting, data = data)
+  
+  # CALCULATE SMD BETWEEN GROUPS WITHIN EACH DATA SUBSET
+  clean_SMD <- possibly(.f = smd::smd, otherwise = NA_real_) 
+  
+  if (is_weighted) { 
+    smd_estimates <- map(data_subsets, ~ clean_SMD(.x$variable, .x$by, .x$weight_var))
+  } else {
+    smd_estimates <- map(data_subsets, ~ clean_SMD(.x$variable, .x$by)) 
+  }
+  
+  extract_SMD <- possibly(.f = function(x){x$estimate}, otherwise = NA_real_)
+  
+  smd_estimates <- map_dbl(smd_estimates, ~ extract_SMD(.x))
+  
+  # OUTPUT THE RESULTS
+  tibble(comp = comparisons, smd = smd_estimates) %>%
+    spread(comp, smd) %>%
+    relocate(any_of(comparisons))
+}
+
+```
+
+##### Now, we create a function to clean the input data before use
+
+```{r, results='hide'}
+
+clean_smd_data <- function(data, variable, by, tbl) {
+  data_type <- last(class(data))
+  tbl_type <- first(class(tbl))
+  if ((data_type != "survey.design" & data_type != "data.frame") | (tbl_type != "tbl_svysummary" & tbl_type != "tbl_summary")) {
+    stop("Inappropriate input to smd function")
+  }
+  is_weighted <- data_type == "survey.design"
+  
+  if (is_weighted) {
+    data <- data$variables %>% mutate(weight_var = 1 / data$allprob[[1]])
+  } else {
+    data <- data %>% mutate(weight_var = 1)
+  }
+  
+  data <- dplyr::select(data, all_of(c(variable, by, "weight_var"))) %>%
+    rlang::set_names(c("variable", "by", "weight_var")) %>%
+    dplyr::filter(complete.cases(.))
+  if (is.character(data$variable)) {
+    data <- data %>% mutate(variable = factor(variable))
+  }
+  if (is.factor(data$variable)) {
+    levels <- levels(data$variable)
+  } else {
+    levels <- NULL
+  }
+  return(list(data, levels, is_weighted))
+}
+
+```
+
+##### This next function applies the clean_smd_data() and the core_smd_function(), modifying the output depending on 1) where the location of the SMDs (label or level) is to be, and 2) whether to print all pairwise SMDs or just SMDs between a reference group and all other groups
+
+```{r, results='hide'}
+
+applied_smd_function <- function(data, variable, by, tbl, ref_group = FALSE, location = "label") {
+  clean_data <- clean_smd_data(data, variable, by, tbl)
+  data <- clean_data[[1]]
+  levels <- clean_data[[2]]
+  is_weighted <- clean_data[[3]]
+  
+  if (location == "label") {
+    output <- core_smd_function(data, is_weighted, ref_group = ref_group)
+  } else { # location == "level"
+    execute_by_level <- function(data, level, is_weighted) {
+      data <- data %>% mutate(variable = variable == level)
+      core_smd_function(data, is_weighted, ref_group = ref_group)
+    }
+    output <- map_dfr(levels, .f = ~ execute_by_level(data, .x, is_weighted))
+  }
+  return(output)
+}
+
+```
+
+##### Now, four caller functions are defined to call the applied_smd_function() with preset values for ´location´ and for ´ref_group´
+
+```{r}
+
+pairwise_smd <- function(data, variable, by, tbl, ...) {
+  applied_smd_function(data, variable, by, tbl)
+}
+pairwise_smd_level <- function(data, variable, by, tbl, ...) {
+  applied_smd_function(data, variable, by, tbl, location = "level")
+}
+
+focal_smd <- function(data, variable, by, tbl, ...) {
+  applied_smd_function(data, variable, by, tbl, ref_group = TRUE)
+}
+focal_smd_level <- function(data, variable, by, tbl, ...) {
+  applied_smd_function(data, variable, by, tbl, ref_group = TRUE, location = "level")
+}
+
+```
+
+##### Finally, we just need to test it.
+
+Here, we create 4 different unweighted tables:
+
+```{r}
+
+trial %>% 
+  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  add_stat(fns = everything() ~ pairwise_smd, location = ~ "label")
+
+trial %>% 
+  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
+
+trial %>% 
+  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  add_stat(fns = everything() ~ focal_smd, location = ~ "label")
+
+trial %>% 
+  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  add_stat(fns = everything() ~ focal_smd_level, location = ~ "level")
+
+
+```
+
+Here, we create 4 weighted tables:
+
+```{r, results='hide'}
+
+library(WeightIt)
+library(survey)
+survey_obj <- trial %>% mutate(
+  w = weightit(grade ~ age + stage + trt, data = .)$weights) %>%
+  survey::svydesign(~1, data = ., weights = ~w) 
+
+```
+
+```{r}
+survey_obj %>%
+  tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
+  add_stat(fns = everything() ~ pairwise_smd) 
+
+survey_obj %>% 
+  tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
+  add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level") 
+
+survey_obj %>% 
+  tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
+  add_stat(fns = everything() ~ focal_smd) 
+
+survey_obj %>% 
+  tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
+  add_stat(fns = everything() ~ focal_smd_level, location = ~ "level") 
+
+```
