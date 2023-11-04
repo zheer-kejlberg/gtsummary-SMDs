@@ -1,7 +1,7 @@
 ---
-title: "Functions to add SMDs in gtsummary tables"
+title: "README"
 author: "Zheer"
-date: "2023-11-03"
+date: "2023-11-04"
 output: html_document
 ---
 
@@ -12,11 +12,6 @@ output: html_document
 library(gtsummary) # For creating a baseline characteristics table
 library(tidyverse) # For data wrangling and misc.
 
-```
-
-##### Then, we create the core function that takes the data and outputs the SMD results
-
-```{r}
 
 core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
   # MAKE A TABLE OF EVERY POSSIBLE COMBO OF TWO DIFFERENT GROUPS
@@ -65,11 +60,7 @@ core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
     relocate(any_of(comparisons))
 }
 
-```
 
-##### Now, we create a function to clean the input data before use
-
-```{r}
 
 clean_smd_data <- function(data, variable, by, tbl) {
   data_type <- last(class(data))
@@ -99,11 +90,7 @@ clean_smd_data <- function(data, variable, by, tbl) {
   return(list(data, levels, is_weighted))
 }
 
-```
 
-##### This next function applies the clean_smd_data() and the core_smd_function(), modifying the output depending on 1) where the location of the SMDs (label or level) is to be, and 2) whether to print all pairwise SMDs or just SMDs between a reference group and all other groups
-
-```{r}
 
 applied_smd_function <- function(data, variable, by, tbl, ref_group = FALSE, location = "label") {
   clean_data <- clean_smd_data(data, variable, by, tbl)
@@ -123,11 +110,7 @@ applied_smd_function <- function(data, variable, by, tbl, ref_group = FALSE, loc
   return(output)
 }
 
-```
 
-##### Now, four caller functions are defined to call the applied_smd_function() with preset values for ´location´ and for ´ref_group´
-
-```{r}
 
 pairwise_smd <- function(data, variable, by, tbl, ...) {
   applied_smd_function(data, variable, by, tbl)
@@ -145,9 +128,9 @@ focal_smd_level <- function(data, variable, by, tbl, ...) {
 
 ```
 
-##### Finally, we just need to test it.
+#### Functions to add SMDs to *tbl_summary* and *tbl_svysummary* objects
 
-Here, we create 4 different unweighted tables:
+
 
 ```{r}
 
@@ -155,18 +138,28 @@ trial %>%
   tbl_summary(by = grade, include = c(trt, age, stage)) %>%
   add_stat(fns = everything() ~ pairwise_smd, location = ~ "label")
 
+```
+
+```{r}
+
 trial %>% 
   tbl_summary(by = grade, include = c(trt, age, stage)) %>%
   add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
 
+```
+
+
+```{r}
+
 trial %>% 
   tbl_summary(by = grade, include = c(trt, age, stage)) %>%
   add_stat(fns = everything() ~ focal_smd, location = ~ "label")
+```
 
+```{r}
 trial %>% 
   tbl_summary(by = grade, include = c(trt, age, stage)) %>%
   add_stat(fns = everything() ~ focal_smd_level, location = ~ "level")
-
 
 ```
 
@@ -186,15 +179,23 @@ survey_obj <- trial %>% mutate(
 survey_obj %>%
   tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
   add_stat(fns = everything() ~ pairwise_smd) 
+```
 
+```{r}
 survey_obj %>% 
   tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
   add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level") 
+```
 
+```{r}
 survey_obj %>% 
   tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
   add_stat(fns = everything() ~ focal_smd) 
+```
 
+Check
+
+```{r}
 survey_obj %>% 
   tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
   add_stat(fns = everything() ~ focal_smd_level, location = ~ "level") 
