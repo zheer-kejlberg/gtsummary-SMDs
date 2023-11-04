@@ -12,9 +12,9 @@ First, wrapper functions are defined for the core functionality (e.g.,
 *core_smd_function* and *applied_smd_function*). Finally, four separate
 “caller” functions are created, each of which call the core functions in
 distinct ways for distinct use cases.  
-\  
-\  
-\  
+    
+    
+    
 ### Defining the functions
 
   
