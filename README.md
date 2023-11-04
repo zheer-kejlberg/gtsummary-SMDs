@@ -208,8 +208,8 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd)
 ```
 
-<div id="nkglizzvnb" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-
+<div id="vjifzhirac" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+ 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
     &#10;    <tr class="gt_col_headings">
@@ -312,9 +312,8 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
 ```
 
-<div id="fybegdgbjp" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-
-
+<div id="jzapzzwpcg" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+ 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
     &#10;    <tr class="gt_col_headings">
@@ -436,9 +435,8 @@ trial %>% mutate(
   add_stat(fns = everything() ~ focal_smd)
 ```
 
-<div id="ykozcllddl" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-
-
+<div id="neukfrhxma" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+ 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
     &#10;    <tr class="gt_col_headings">
