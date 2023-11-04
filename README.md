@@ -5,8 +5,6 @@ Zheer Kejlberg Al-Mashhadi
 
 ## Functions to add SMDs with explanations and examples of use
 
-  
-
 In this document, the necessary functions are defined and explained.
 First, wrapper functions are defined for the core functionality (e.g.,
 *core_smd_function* and *applied_smd_function*). Finally, four separate
@@ -28,7 +26,7 @@ library(gtsummary) # For creating a baseline characteristics table
 library(tidyverse) # For data wrangling and misc.
 ```
 
-  
+<br>
 
 #### 2) Create the core functionality, via **core_smd_function()**, for taking the data and outputting the SMD results
 
@@ -81,7 +79,7 @@ core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
 }
 ```
 
-  
+<br>
 
 #### 3) Create a function *clean_smd_data()* to prepare the input data for use by the *core_smd_function()*
 
@@ -115,7 +113,7 @@ clean_smd_data <- function(data, variable, by, tbl) {
 }
 ```
 
-  
+<br>
 
 #### 4) Create a function to apply the *core_smd_function()* in various ways for different use cases
 
@@ -161,7 +159,7 @@ applied_smd_function <- function(data, variable, by, tbl, ref_group = FALSE, loc
 }
 ```
 
-  
+<br>
 
 #### 5) Finally, four caller functions are defined to call the **applied_smd_function()** with preset values for *location* and for *ref_group*
 
@@ -192,12 +190,15 @@ focal_smd_level <- function(data, variable, by, tbl, ...) {
   level of cateogrical variables is returned.
 - **focal_smd_level** sets *ref_group = TRUE* and *location = “level”*,
   meaning only group 1 is compared to all other groupsd, and one SMD per
-  level of cateogrical variables is returned.  
-    
+  level of cateogrical variables is returned.
+
+<br>
+
+<br>
 
 ### Using the functions with gtsummary.
 
-  
+<br>
 
 #### For unweighted data (with a *tbl_summary()* object), see the following examples:
 
@@ -211,7 +212,7 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd)
 ```
 
-<div id="cegumblhhd" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="mnskcgjmkr" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -315,7 +316,7 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
 ```
 
-<div id="hgnckdmfmo" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="xsccskflfx" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -416,6 +417,8 @@ trial %>%
 
   
 
+<br>
+
 #### For weighted data, use *tbl_svysummary()*:
 
 In this examply we use weights from **WeightIt** package. The **survey**
@@ -438,7 +441,7 @@ trial %>% mutate(
   add_stat(fns = everything() ~ focal_smd)
 ```
 
-<div id="grhrkutpfa" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="norvcfepzb" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
