@@ -1,9 +1,9 @@
-Functions to add SMDs in gtsummary tables
+Adding SMDs to gtsummary tables with 3 or more groups
 ================
 Zheer Kejlberg Al-Mashhadi
-2023-11-03
+2023-11-04
 
-## Adding SMDs to gtsummary tables with 3 or more groups
+## Functions to add SMDs with explanations and examples of use
 
   
 
@@ -208,7 +208,7 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd)
 ```
 
-<div id="ajxbjvfkpk" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="nkglizzvnb" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -312,7 +312,8 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
 ```
 
-<div id="plxlosdfnk" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="fybegdgbjp" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -435,7 +436,8 @@ trial %>% mutate(
   add_stat(fns = everything() ~ focal_smd)
 ```
 
-<div id="mxwoltpldn" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="ykozcllddl" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
