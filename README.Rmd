@@ -24,6 +24,7 @@ First, wrapper functions are defined for the core functionality (e.g., *core_smd
 
 library(gtsummary) # For creating a baseline characteristics table
 library(tidyverse) # For data wrangling and misc.
+library(smd) # for calculating the SMDs
 
 ```
 
