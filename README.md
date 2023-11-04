@@ -1,145 +1,149 @@
 ##### First, we load dependencies
 
-    library(gtsummary) # For creating a baseline characteristics table
-    library(tidyverse) # For data wrangling and misc.
+``` r
+library(gtsummary) # For creating a baseline characteristics table
+library(tidyverse) # For data wrangling and misc.
 
 
-    core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
-      # MAKE A TABLE OF EVERY POSSIBLE COMBO OF TWO DIFFERENT GROUPS
-      groups <- factor(unique(data$by))
-      pairs <- expand.grid(groups, groups) %>%
-        arrange(as.integer(.data$Var1), as.integer(.data$Var2)) %>% 
-        filter(Var1 != Var2) %>%
-        filter(!duplicated(
-          paste0(pmax(as.character(Var1), as.character(Var2)), 
-                 pmin(as.character(Var1), as.character(Var2)))))
-      if (ref_group) { # IF ref_group, KEEP ONLY PAIRS CONTAINING THE REF GROUP
-        pairs <- pairs %>% filter(Var1 == first(levels(groups)))
-      }
-      name_comparison <- function(pair) {
-        filtered_data <- data %>% filter(by %in% pair) %>% mutate(by = factor(by))
-        paste(levels(filtered_data$by)[1], levels(filtered_data$by)[2], sep = " vs. ")
-      }
-      comparisons <- apply(pairs, 1, name_comparison)
-      
-      # CREATE SUBSETS OF DATA
-      subsetting <- function(pair, data) {
-        as.data.frame(data) %>%
-          filter(by %in% pair) %>%
-          mutate(by = factor(by)) %>%
-          droplevels()
-      }
-      
-      data_subsets <- apply(X = pairs, MARGIN = 1, FUN = subsetting, data = data)
-      
-      # CALCULATE SMD BETWEEN GROUPS WITHIN EACH DATA SUBSET
-      clean_SMD <- possibly(.f = smd::smd, otherwise = NA_real_) 
-      
-      if (is_weighted) { 
-        smd_estimates <- map(data_subsets, ~ clean_SMD(.x$variable, .x$by, .x$weight_var))
-      } else {
-        smd_estimates <- map(data_subsets, ~ clean_SMD(.x$variable, .x$by)) 
-      }
-      
-      extract_SMD <- possibly(.f = function(x){x$estimate}, otherwise = NA_real_)
-      
-      smd_estimates <- map_dbl(smd_estimates, ~ extract_SMD(.x))
-      
-      # OUTPUT THE RESULTS
-      tibble(comp = comparisons, smd = smd_estimates) %>%
-        spread(comp, smd) %>%
-        relocate(any_of(comparisons))
+core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
+  # MAKE A TABLE OF EVERY POSSIBLE COMBO OF TWO DIFFERENT GROUPS
+  groups <- factor(unique(data$by))
+  pairs <- expand.grid(groups, groups) %>%
+    arrange(as.integer(.data$Var1), as.integer(.data$Var2)) %>% 
+    filter(Var1 != Var2) %>%
+    filter(!duplicated(
+      paste0(pmax(as.character(Var1), as.character(Var2)), 
+             pmin(as.character(Var1), as.character(Var2)))))
+  if (ref_group) { # IF ref_group, KEEP ONLY PAIRS CONTAINING THE REF GROUP
+    pairs <- pairs %>% filter(Var1 == first(levels(groups)))
+  }
+  name_comparison <- function(pair) {
+    filtered_data <- data %>% filter(by %in% pair) %>% mutate(by = factor(by))
+    paste(levels(filtered_data$by)[1], levels(filtered_data$by)[2], sep = " vs. ")
+  }
+  comparisons <- apply(pairs, 1, name_comparison)
+  
+  # CREATE SUBSETS OF DATA
+  subsetting <- function(pair, data) {
+    as.data.frame(data) %>%
+      filter(by %in% pair) %>%
+      mutate(by = factor(by)) %>%
+      droplevels()
+  }
+  
+  data_subsets <- apply(X = pairs, MARGIN = 1, FUN = subsetting, data = data)
+  
+  # CALCULATE SMD BETWEEN GROUPS WITHIN EACH DATA SUBSET
+  clean_SMD <- possibly(.f = smd::smd, otherwise = NA_real_) 
+  
+  if (is_weighted) { 
+    smd_estimates <- map(data_subsets, ~ clean_SMD(.x$variable, .x$by, .x$weight_var))
+  } else {
+    smd_estimates <- map(data_subsets, ~ clean_SMD(.x$variable, .x$by)) 
+  }
+  
+  extract_SMD <- possibly(.f = function(x){x$estimate}, otherwise = NA_real_)
+  
+  smd_estimates <- map_dbl(smd_estimates, ~ extract_SMD(.x))
+  
+  # OUTPUT THE RESULTS
+  tibble(comp = comparisons, smd = smd_estimates) %>%
+    spread(comp, smd) %>%
+    relocate(any_of(comparisons))
+}
+
+
+
+clean_smd_data <- function(data, variable, by, tbl) {
+  data_type <- last(class(data))
+  tbl_type <- first(class(tbl))
+  if ((data_type != "survey.design" & data_type != "data.frame") | (tbl_type != "tbl_svysummary" & tbl_type != "tbl_summary")) {
+    stop("Inappropriate input to smd function")
+  }
+  is_weighted <- data_type == "survey.design"
+  
+  if (is_weighted) {
+    data <- data$variables %>% mutate(weight_var = 1 / data$allprob[[1]])
+  } else {
+    data <- data %>% mutate(weight_var = 1)
+  }
+  
+  data <- dplyr::select(data, all_of(c(variable, by, "weight_var"))) %>%
+    rlang::set_names(c("variable", "by", "weight_var")) %>%
+    dplyr::filter(complete.cases(.))
+  if (is.character(data$variable)) {
+    data <- data %>% mutate(variable = factor(variable))
+  }
+  if (is.factor(data$variable)) {
+    levels <- levels(data$variable)
+  } else {
+    levels <- NULL
+  }
+  return(list(data, levels, is_weighted))
+}
+
+
+
+applied_smd_function <- function(data, variable, by, tbl, ref_group = FALSE, location = "label") {
+  clean_data <- clean_smd_data(data, variable, by, tbl)
+  data <- clean_data[[1]]
+  levels <- clean_data[[2]]
+  is_weighted <- clean_data[[3]]
+  
+  if (location == "label") {
+    output <- core_smd_function(data, is_weighted, ref_group = ref_group)
+  } else { # location == "level"
+    execute_by_level <- function(data, level, is_weighted) {
+      data <- data %>% mutate(variable = variable == level)
+      core_smd_function(data, is_weighted, ref_group = ref_group)
     }
+    output <- map_dfr(levels, .f = ~ execute_by_level(data, .x, is_weighted))
+  }
+  return(output)
+}
 
 
 
-    clean_smd_data <- function(data, variable, by, tbl) {
-      data_type <- last(class(data))
-      tbl_type <- first(class(tbl))
-      if ((data_type != "survey.design" & data_type != "data.frame") | (tbl_type != "tbl_svysummary" & tbl_type != "tbl_summary")) {
-        stop("Inappropriate input to smd function")
-      }
-      is_weighted <- data_type == "survey.design"
-      
-      if (is_weighted) {
-        data <- data$variables %>% mutate(weight_var = 1 / data$allprob[[1]])
-      } else {
-        data <- data %>% mutate(weight_var = 1)
-      }
-      
-      data <- dplyr::select(data, all_of(c(variable, by, "weight_var"))) %>%
-        rlang::set_names(c("variable", "by", "weight_var")) %>%
-        dplyr::filter(complete.cases(.))
-      if (is.character(data$variable)) {
-        data <- data %>% mutate(variable = factor(variable))
-      }
-      if (is.factor(data$variable)) {
-        levels <- levels(data$variable)
-      } else {
-        levels <- NULL
-      }
-      return(list(data, levels, is_weighted))
-    }
+pairwise_smd <- function(data, variable, by, tbl, ...) {
+  applied_smd_function(data, variable, by, tbl)
+}
+pairwise_smd_level <- function(data, variable, by, tbl, ...) {
+  applied_smd_function(data, variable, by, tbl, location = "level")
+}
 
+focal_smd <- function(data, variable, by, tbl, ...) {
+  applied_smd_function(data, variable, by, tbl, ref_group = TRUE)
+}
+focal_smd_level <- function(data, variable, by, tbl, ...) {
+  applied_smd_function(data, variable, by, tbl, ref_group = TRUE, location = "level")
+}
+```
 
+#### Functions to add SMDs to *tbl_summary* and *tbl_svysummary* objects
 
-    applied_smd_function <- function(data, variable, by, tbl, ref_group = FALSE, location = "label") {
-      clean_data <- clean_smd_data(data, variable, by, tbl)
-      data <- clean_data[[1]]
-      levels <- clean_data[[2]]
-      is_weighted <- clean_data[[3]]
-      
-      if (location == "label") {
-        output <- core_smd_function(data, is_weighted, ref_group = ref_group)
-      } else { # location == "level"
-        execute_by_level <- function(data, level, is_weighted) {
-          data <- data %>% mutate(variable = variable == level)
-          core_smd_function(data, is_weighted, ref_group = ref_group)
-        }
-        output <- map_dfr(levels, .f = ~ execute_by_level(data, .x, is_weighted))
-      }
-      return(output)
-    }
+``` r
+trial %>% 
+  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  add_stat(fns = everything() ~ pairwise_smd, location = ~ "label")
+```
 
-
-
-    pairwise_smd <- function(data, variable, by, tbl, ...) {
-      applied_smd_function(data, variable, by, tbl)
-    }
-    pairwise_smd_level <- function(data, variable, by, tbl, ...) {
-      applied_smd_function(data, variable, by, tbl, location = "level")
-    }
-
-    focal_smd <- function(data, variable, by, tbl, ...) {
-      applied_smd_function(data, variable, by, tbl, ref_group = TRUE)
-    }
-    focal_smd_level <- function(data, variable, by, tbl, ...) {
-      applied_smd_function(data, variable, by, tbl, ref_group = TRUE, location = "level")
-    }
-
-#### Functions to add SMDs to *tbl\_summary* and *tbl\_svysummary* objects
-
-    trial %>% 
-      tbl_summary(by = grade, include = c(trt, age, stage)) %>%
-      add_stat(fns = everything() ~ pairwise_smd, location = ~ "label")
-
-<div id="llggcixzni" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-<style>#llggcixzni table {
+<div id="nxjbpfcvqo" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#nxjbpfcvqo table {
   font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#llggcixzni thead, #llggcixzni tbody, #llggcixzni tfoot, #llggcixzni tr, #llggcixzni td, #llggcixzni th {
+#nxjbpfcvqo thead, #nxjbpfcvqo tbody, #nxjbpfcvqo tfoot, #nxjbpfcvqo tr, #nxjbpfcvqo td, #nxjbpfcvqo th {
   border-style: none;
 }
 
-#llggcixzni p {
+#nxjbpfcvqo p {
   margin: 0;
   padding: 0;
 }
 
-#llggcixzni .gt_table {
+#nxjbpfcvqo .gt_table {
   display: table;
   border-collapse: collapse;
   line-height: normal;
@@ -165,12 +169,12 @@
   border-left-color: #D3D3D3;
 }
 
-#llggcixzni .gt_caption {
+#nxjbpfcvqo .gt_caption {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#llggcixzni .gt_title {
+#nxjbpfcvqo .gt_title {
   color: #333333;
   font-size: 125%;
   font-weight: initial;
@@ -182,7 +186,7 @@
   border-bottom-width: 0;
 }
 
-#llggcixzni .gt_subtitle {
+#nxjbpfcvqo .gt_subtitle {
   color: #333333;
   font-size: 85%;
   font-weight: initial;
@@ -194,7 +198,7 @@
   border-top-width: 0;
 }
 
-#llggcixzni .gt_heading {
+#nxjbpfcvqo .gt_heading {
   background-color: #FFFFFF;
   text-align: center;
   border-bottom-color: #FFFFFF;
@@ -206,13 +210,13 @@
   border-right-color: #D3D3D3;
 }
 
-#llggcixzni .gt_bottom_border {
+#nxjbpfcvqo .gt_bottom_border {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
 }
 
-#llggcixzni .gt_col_headings {
+#nxjbpfcvqo .gt_col_headings {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -227,7 +231,7 @@
   border-right-color: #D3D3D3;
 }
 
-#llggcixzni .gt_col_heading {
+#nxjbpfcvqo .gt_col_heading {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -247,7 +251,7 @@
   overflow-x: hidden;
 }
 
-#llggcixzni .gt_column_spanner_outer {
+#nxjbpfcvqo .gt_column_spanner_outer {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -259,15 +263,15 @@
   padding-right: 4px;
 }
 
-#llggcixzni .gt_column_spanner_outer:first-child {
+#nxjbpfcvqo .gt_column_spanner_outer:first-child {
   padding-left: 0;
 }
 
-#llggcixzni .gt_column_spanner_outer:last-child {
+#nxjbpfcvqo .gt_column_spanner_outer:last-child {
   padding-right: 0;
 }
 
-#llggcixzni .gt_column_spanner {
+#nxjbpfcvqo .gt_column_spanner {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
@@ -279,11 +283,11 @@
   width: 100%;
 }
 
-#llggcixzni .gt_spanner_row {
+#nxjbpfcvqo .gt_spanner_row {
   border-bottom-style: hidden;
 }
 
-#llggcixzni .gt_group_heading {
+#nxjbpfcvqo .gt_group_heading {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -309,7 +313,7 @@
   text-align: left;
 }
 
-#llggcixzni .gt_empty_group_heading {
+#nxjbpfcvqo .gt_empty_group_heading {
   padding: 0.5px;
   color: #333333;
   background-color: #FFFFFF;
@@ -324,15 +328,15 @@
   vertical-align: middle;
 }
 
-#llggcixzni .gt_from_md > :first-child {
+#nxjbpfcvqo .gt_from_md > :first-child {
   margin-top: 0;
 }
 
-#llggcixzni .gt_from_md > :last-child {
+#nxjbpfcvqo .gt_from_md > :last-child {
   margin-bottom: 0;
 }
 
-#llggcixzni .gt_row {
+#nxjbpfcvqo .gt_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -351,7 +355,7 @@
   overflow-x: hidden;
 }
 
-#llggcixzni .gt_stub {
+#nxjbpfcvqo .gt_stub {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -364,7 +368,7 @@
   padding-right: 5px;
 }
 
-#llggcixzni .gt_stub_row_group {
+#nxjbpfcvqo .gt_stub_row_group {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -378,15 +382,15 @@
   vertical-align: top;
 }
 
-#llggcixzni .gt_row_group_first td {
+#nxjbpfcvqo .gt_row_group_first td {
   border-top-width: 2px;
 }
 
-#llggcixzni .gt_row_group_first th {
+#nxjbpfcvqo .gt_row_group_first th {
   border-top-width: 2px;
 }
 
-#llggcixzni .gt_summary_row {
+#nxjbpfcvqo .gt_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -396,16 +400,16 @@
   padding-right: 5px;
 }
 
-#llggcixzni .gt_first_summary_row {
+#nxjbpfcvqo .gt_first_summary_row {
   border-top-style: solid;
   border-top-color: #D3D3D3;
 }
 
-#llggcixzni .gt_first_summary_row.thick {
+#nxjbpfcvqo .gt_first_summary_row.thick {
   border-top-width: 2px;
 }
 
-#llggcixzni .gt_last_summary_row {
+#nxjbpfcvqo .gt_last_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -415,7 +419,7 @@
   border-bottom-color: #D3D3D3;
 }
 
-#llggcixzni .gt_grand_summary_row {
+#nxjbpfcvqo .gt_grand_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -425,7 +429,7 @@
   padding-right: 5px;
 }
 
-#llggcixzni .gt_first_grand_summary_row {
+#nxjbpfcvqo .gt_first_grand_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -435,7 +439,7 @@
   border-top-color: #D3D3D3;
 }
 
-#llggcixzni .gt_last_grand_summary_row_top {
+#nxjbpfcvqo .gt_last_grand_summary_row_top {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -445,11 +449,11 @@
   border-bottom-color: #D3D3D3;
 }
 
-#llggcixzni .gt_striped {
+#nxjbpfcvqo .gt_striped {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
-#llggcixzni .gt_table_body {
+#nxjbpfcvqo .gt_table_body {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -458,7 +462,7 @@
   border-bottom-color: #D3D3D3;
 }
 
-#llggcixzni .gt_footnotes {
+#nxjbpfcvqo .gt_footnotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -472,7 +476,7 @@
   border-right-color: #D3D3D3;
 }
 
-#llggcixzni .gt_footnote {
+#nxjbpfcvqo .gt_footnote {
   margin: 0px;
   font-size: 90%;
   padding-top: 4px;
@@ -481,7 +485,7 @@
   padding-right: 5px;
 }
 
-#llggcixzni .gt_sourcenotes {
+#nxjbpfcvqo .gt_sourcenotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -495,7 +499,7 @@
   border-right-color: #D3D3D3;
 }
 
-#llggcixzni .gt_sourcenote {
+#nxjbpfcvqo .gt_sourcenote {
   font-size: 90%;
   padding-top: 4px;
   padding-bottom: 4px;
@@ -503,63 +507,63 @@
   padding-right: 5px;
 }
 
-#llggcixzni .gt_left {
+#nxjbpfcvqo .gt_left {
   text-align: left;
 }
 
-#llggcixzni .gt_center {
+#nxjbpfcvqo .gt_center {
   text-align: center;
 }
 
-#llggcixzni .gt_right {
+#nxjbpfcvqo .gt_right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#llggcixzni .gt_font_normal {
+#nxjbpfcvqo .gt_font_normal {
   font-weight: normal;
 }
 
-#llggcixzni .gt_font_bold {
+#nxjbpfcvqo .gt_font_bold {
   font-weight: bold;
 }
 
-#llggcixzni .gt_font_italic {
+#nxjbpfcvqo .gt_font_italic {
   font-style: italic;
 }
 
-#llggcixzni .gt_super {
+#nxjbpfcvqo .gt_super {
   font-size: 65%;
 }
 
-#llggcixzni .gt_footnote_marks {
+#nxjbpfcvqo .gt_footnote_marks {
   font-size: 75%;
   vertical-align: 0.4em;
   position: initial;
 }
 
-#llggcixzni .gt_asterisk {
+#nxjbpfcvqo .gt_asterisk {
   font-size: 100%;
   vertical-align: 0;
 }
 
-#llggcixzni .gt_indent_1 {
+#nxjbpfcvqo .gt_indent_1 {
   text-indent: 5px;
 }
 
-#llggcixzni .gt_indent_2 {
+#nxjbpfcvqo .gt_indent_2 {
   text-indent: 10px;
 }
 
-#llggcixzni .gt_indent_3 {
+#nxjbpfcvqo .gt_indent_3 {
   text-indent: 15px;
 }
 
-#llggcixzni .gt_indent_4 {
+#nxjbpfcvqo .gt_indent_4 {
   text-indent: 20px;
 }
 
-#llggcixzni .gt_indent_5 {
+#nxjbpfcvqo .gt_indent_5 {
   text-indent: 25px;
 }
 </style>
@@ -657,27 +661,29 @@
 </table>
 </div>
 
-    trial %>% 
-      tbl_summary(by = grade, include = c(trt, age, stage)) %>%
-      add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
+``` r
+trial %>% 
+  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
+```
 
-<div id="knpysqebez" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-<style>#knpysqebez table {
+<div id="tdxaykhamw" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#tdxaykhamw table {
   font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#knpysqebez thead, #knpysqebez tbody, #knpysqebez tfoot, #knpysqebez tr, #knpysqebez td, #knpysqebez th {
+#tdxaykhamw thead, #tdxaykhamw tbody, #tdxaykhamw tfoot, #tdxaykhamw tr, #tdxaykhamw td, #tdxaykhamw th {
   border-style: none;
 }
 
-#knpysqebez p {
+#tdxaykhamw p {
   margin: 0;
   padding: 0;
 }
 
-#knpysqebez .gt_table {
+#tdxaykhamw .gt_table {
   display: table;
   border-collapse: collapse;
   line-height: normal;
@@ -703,12 +709,12 @@
   border-left-color: #D3D3D3;
 }
 
-#knpysqebez .gt_caption {
+#tdxaykhamw .gt_caption {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#knpysqebez .gt_title {
+#tdxaykhamw .gt_title {
   color: #333333;
   font-size: 125%;
   font-weight: initial;
@@ -720,7 +726,7 @@
   border-bottom-width: 0;
 }
 
-#knpysqebez .gt_subtitle {
+#tdxaykhamw .gt_subtitle {
   color: #333333;
   font-size: 85%;
   font-weight: initial;
@@ -732,7 +738,7 @@
   border-top-width: 0;
 }
 
-#knpysqebez .gt_heading {
+#tdxaykhamw .gt_heading {
   background-color: #FFFFFF;
   text-align: center;
   border-bottom-color: #FFFFFF;
@@ -744,13 +750,13 @@
   border-right-color: #D3D3D3;
 }
 
-#knpysqebez .gt_bottom_border {
+#tdxaykhamw .gt_bottom_border {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
 }
 
-#knpysqebez .gt_col_headings {
+#tdxaykhamw .gt_col_headings {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -765,7 +771,7 @@
   border-right-color: #D3D3D3;
 }
 
-#knpysqebez .gt_col_heading {
+#tdxaykhamw .gt_col_heading {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -785,7 +791,7 @@
   overflow-x: hidden;
 }
 
-#knpysqebez .gt_column_spanner_outer {
+#tdxaykhamw .gt_column_spanner_outer {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -797,15 +803,15 @@
   padding-right: 4px;
 }
 
-#knpysqebez .gt_column_spanner_outer:first-child {
+#tdxaykhamw .gt_column_spanner_outer:first-child {
   padding-left: 0;
 }
 
-#knpysqebez .gt_column_spanner_outer:last-child {
+#tdxaykhamw .gt_column_spanner_outer:last-child {
   padding-right: 0;
 }
 
-#knpysqebez .gt_column_spanner {
+#tdxaykhamw .gt_column_spanner {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
@@ -817,11 +823,11 @@
   width: 100%;
 }
 
-#knpysqebez .gt_spanner_row {
+#tdxaykhamw .gt_spanner_row {
   border-bottom-style: hidden;
 }
 
-#knpysqebez .gt_group_heading {
+#tdxaykhamw .gt_group_heading {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -847,7 +853,7 @@
   text-align: left;
 }
 
-#knpysqebez .gt_empty_group_heading {
+#tdxaykhamw .gt_empty_group_heading {
   padding: 0.5px;
   color: #333333;
   background-color: #FFFFFF;
@@ -862,15 +868,15 @@
   vertical-align: middle;
 }
 
-#knpysqebez .gt_from_md > :first-child {
+#tdxaykhamw .gt_from_md > :first-child {
   margin-top: 0;
 }
 
-#knpysqebez .gt_from_md > :last-child {
+#tdxaykhamw .gt_from_md > :last-child {
   margin-bottom: 0;
 }
 
-#knpysqebez .gt_row {
+#tdxaykhamw .gt_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -889,7 +895,7 @@
   overflow-x: hidden;
 }
 
-#knpysqebez .gt_stub {
+#tdxaykhamw .gt_stub {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -902,7 +908,7 @@
   padding-right: 5px;
 }
 
-#knpysqebez .gt_stub_row_group {
+#tdxaykhamw .gt_stub_row_group {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -916,15 +922,15 @@
   vertical-align: top;
 }
 
-#knpysqebez .gt_row_group_first td {
+#tdxaykhamw .gt_row_group_first td {
   border-top-width: 2px;
 }
 
-#knpysqebez .gt_row_group_first th {
+#tdxaykhamw .gt_row_group_first th {
   border-top-width: 2px;
 }
 
-#knpysqebez .gt_summary_row {
+#tdxaykhamw .gt_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -934,16 +940,16 @@
   padding-right: 5px;
 }
 
-#knpysqebez .gt_first_summary_row {
+#tdxaykhamw .gt_first_summary_row {
   border-top-style: solid;
   border-top-color: #D3D3D3;
 }
 
-#knpysqebez .gt_first_summary_row.thick {
+#tdxaykhamw .gt_first_summary_row.thick {
   border-top-width: 2px;
 }
 
-#knpysqebez .gt_last_summary_row {
+#tdxaykhamw .gt_last_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -953,7 +959,7 @@
   border-bottom-color: #D3D3D3;
 }
 
-#knpysqebez .gt_grand_summary_row {
+#tdxaykhamw .gt_grand_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -963,7 +969,7 @@
   padding-right: 5px;
 }
 
-#knpysqebez .gt_first_grand_summary_row {
+#tdxaykhamw .gt_first_grand_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -973,7 +979,7 @@
   border-top-color: #D3D3D3;
 }
 
-#knpysqebez .gt_last_grand_summary_row_top {
+#tdxaykhamw .gt_last_grand_summary_row_top {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -983,11 +989,11 @@
   border-bottom-color: #D3D3D3;
 }
 
-#knpysqebez .gt_striped {
+#tdxaykhamw .gt_striped {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
-#knpysqebez .gt_table_body {
+#tdxaykhamw .gt_table_body {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -996,7 +1002,7 @@
   border-bottom-color: #D3D3D3;
 }
 
-#knpysqebez .gt_footnotes {
+#tdxaykhamw .gt_footnotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -1010,7 +1016,7 @@
   border-right-color: #D3D3D3;
 }
 
-#knpysqebez .gt_footnote {
+#tdxaykhamw .gt_footnote {
   margin: 0px;
   font-size: 90%;
   padding-top: 4px;
@@ -1019,7 +1025,7 @@
   padding-right: 5px;
 }
 
-#knpysqebez .gt_sourcenotes {
+#tdxaykhamw .gt_sourcenotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -1033,7 +1039,7 @@
   border-right-color: #D3D3D3;
 }
 
-#knpysqebez .gt_sourcenote {
+#tdxaykhamw .gt_sourcenote {
   font-size: 90%;
   padding-top: 4px;
   padding-bottom: 4px;
@@ -1041,63 +1047,63 @@
   padding-right: 5px;
 }
 
-#knpysqebez .gt_left {
+#tdxaykhamw .gt_left {
   text-align: left;
 }
 
-#knpysqebez .gt_center {
+#tdxaykhamw .gt_center {
   text-align: center;
 }
 
-#knpysqebez .gt_right {
+#tdxaykhamw .gt_right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#knpysqebez .gt_font_normal {
+#tdxaykhamw .gt_font_normal {
   font-weight: normal;
 }
 
-#knpysqebez .gt_font_bold {
+#tdxaykhamw .gt_font_bold {
   font-weight: bold;
 }
 
-#knpysqebez .gt_font_italic {
+#tdxaykhamw .gt_font_italic {
   font-style: italic;
 }
 
-#knpysqebez .gt_super {
+#tdxaykhamw .gt_super {
   font-size: 65%;
 }
 
-#knpysqebez .gt_footnote_marks {
+#tdxaykhamw .gt_footnote_marks {
   font-size: 75%;
   vertical-align: 0.4em;
   position: initial;
 }
 
-#knpysqebez .gt_asterisk {
+#tdxaykhamw .gt_asterisk {
   font-size: 100%;
   vertical-align: 0;
 }
 
-#knpysqebez .gt_indent_1 {
+#tdxaykhamw .gt_indent_1 {
   text-indent: 5px;
 }
 
-#knpysqebez .gt_indent_2 {
+#tdxaykhamw .gt_indent_2 {
   text-indent: 10px;
 }
 
-#knpysqebez .gt_indent_3 {
+#tdxaykhamw .gt_indent_3 {
   text-indent: 15px;
 }
 
-#knpysqebez .gt_indent_4 {
+#tdxaykhamw .gt_indent_4 {
   text-indent: 20px;
 }
 
-#knpysqebez .gt_indent_5 {
+#tdxaykhamw .gt_indent_5 {
   text-indent: 25px;
 }
 </style>
@@ -1195,27 +1201,29 @@
 </table>
 </div>
 
-    trial %>% 
-      tbl_summary(by = grade, include = c(trt, age, stage)) %>%
-      add_stat(fns = everything() ~ focal_smd, location = ~ "label")
+``` r
+trial %>% 
+  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  add_stat(fns = everything() ~ focal_smd, location = ~ "label")
+```
 
-<div id="gginmuyoyp" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-<style>#gginmuyoyp table {
+<div id="wafcejzegv" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#wafcejzegv table {
   font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#gginmuyoyp thead, #gginmuyoyp tbody, #gginmuyoyp tfoot, #gginmuyoyp tr, #gginmuyoyp td, #gginmuyoyp th {
+#wafcejzegv thead, #wafcejzegv tbody, #wafcejzegv tfoot, #wafcejzegv tr, #wafcejzegv td, #wafcejzegv th {
   border-style: none;
 }
 
-#gginmuyoyp p {
+#wafcejzegv p {
   margin: 0;
   padding: 0;
 }
 
-#gginmuyoyp .gt_table {
+#wafcejzegv .gt_table {
   display: table;
   border-collapse: collapse;
   line-height: normal;
@@ -1241,12 +1249,12 @@
   border-left-color: #D3D3D3;
 }
 
-#gginmuyoyp .gt_caption {
+#wafcejzegv .gt_caption {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#gginmuyoyp .gt_title {
+#wafcejzegv .gt_title {
   color: #333333;
   font-size: 125%;
   font-weight: initial;
@@ -1258,7 +1266,7 @@
   border-bottom-width: 0;
 }
 
-#gginmuyoyp .gt_subtitle {
+#wafcejzegv .gt_subtitle {
   color: #333333;
   font-size: 85%;
   font-weight: initial;
@@ -1270,7 +1278,7 @@
   border-top-width: 0;
 }
 
-#gginmuyoyp .gt_heading {
+#wafcejzegv .gt_heading {
   background-color: #FFFFFF;
   text-align: center;
   border-bottom-color: #FFFFFF;
@@ -1282,13 +1290,13 @@
   border-right-color: #D3D3D3;
 }
 
-#gginmuyoyp .gt_bottom_border {
+#wafcejzegv .gt_bottom_border {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
 }
 
-#gginmuyoyp .gt_col_headings {
+#wafcejzegv .gt_col_headings {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -1303,7 +1311,7 @@
   border-right-color: #D3D3D3;
 }
 
-#gginmuyoyp .gt_col_heading {
+#wafcejzegv .gt_col_heading {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -1323,7 +1331,7 @@
   overflow-x: hidden;
 }
 
-#gginmuyoyp .gt_column_spanner_outer {
+#wafcejzegv .gt_column_spanner_outer {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -1335,15 +1343,15 @@
   padding-right: 4px;
 }
 
-#gginmuyoyp .gt_column_spanner_outer:first-child {
+#wafcejzegv .gt_column_spanner_outer:first-child {
   padding-left: 0;
 }
 
-#gginmuyoyp .gt_column_spanner_outer:last-child {
+#wafcejzegv .gt_column_spanner_outer:last-child {
   padding-right: 0;
 }
 
-#gginmuyoyp .gt_column_spanner {
+#wafcejzegv .gt_column_spanner {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
@@ -1355,11 +1363,11 @@
   width: 100%;
 }
 
-#gginmuyoyp .gt_spanner_row {
+#wafcejzegv .gt_spanner_row {
   border-bottom-style: hidden;
 }
 
-#gginmuyoyp .gt_group_heading {
+#wafcejzegv .gt_group_heading {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1385,7 +1393,7 @@
   text-align: left;
 }
 
-#gginmuyoyp .gt_empty_group_heading {
+#wafcejzegv .gt_empty_group_heading {
   padding: 0.5px;
   color: #333333;
   background-color: #FFFFFF;
@@ -1400,15 +1408,15 @@
   vertical-align: middle;
 }
 
-#gginmuyoyp .gt_from_md > :first-child {
+#wafcejzegv .gt_from_md > :first-child {
   margin-top: 0;
 }
 
-#gginmuyoyp .gt_from_md > :last-child {
+#wafcejzegv .gt_from_md > :last-child {
   margin-bottom: 0;
 }
 
-#gginmuyoyp .gt_row {
+#wafcejzegv .gt_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1427,7 +1435,7 @@
   overflow-x: hidden;
 }
 
-#gginmuyoyp .gt_stub {
+#wafcejzegv .gt_stub {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -1440,7 +1448,7 @@
   padding-right: 5px;
 }
 
-#gginmuyoyp .gt_stub_row_group {
+#wafcejzegv .gt_stub_row_group {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -1454,15 +1462,15 @@
   vertical-align: top;
 }
 
-#gginmuyoyp .gt_row_group_first td {
+#wafcejzegv .gt_row_group_first td {
   border-top-width: 2px;
 }
 
-#gginmuyoyp .gt_row_group_first th {
+#wafcejzegv .gt_row_group_first th {
   border-top-width: 2px;
 }
 
-#gginmuyoyp .gt_summary_row {
+#wafcejzegv .gt_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -1472,16 +1480,16 @@
   padding-right: 5px;
 }
 
-#gginmuyoyp .gt_first_summary_row {
+#wafcejzegv .gt_first_summary_row {
   border-top-style: solid;
   border-top-color: #D3D3D3;
 }
 
-#gginmuyoyp .gt_first_summary_row.thick {
+#wafcejzegv .gt_first_summary_row.thick {
   border-top-width: 2px;
 }
 
-#gginmuyoyp .gt_last_summary_row {
+#wafcejzegv .gt_last_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1491,7 +1499,7 @@
   border-bottom-color: #D3D3D3;
 }
 
-#gginmuyoyp .gt_grand_summary_row {
+#wafcejzegv .gt_grand_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -1501,7 +1509,7 @@
   padding-right: 5px;
 }
 
-#gginmuyoyp .gt_first_grand_summary_row {
+#wafcejzegv .gt_first_grand_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1511,7 +1519,7 @@
   border-top-color: #D3D3D3;
 }
 
-#gginmuyoyp .gt_last_grand_summary_row_top {
+#wafcejzegv .gt_last_grand_summary_row_top {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1521,11 +1529,11 @@
   border-bottom-color: #D3D3D3;
 }
 
-#gginmuyoyp .gt_striped {
+#wafcejzegv .gt_striped {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
-#gginmuyoyp .gt_table_body {
+#wafcejzegv .gt_table_body {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -1534,7 +1542,7 @@
   border-bottom-color: #D3D3D3;
 }
 
-#gginmuyoyp .gt_footnotes {
+#wafcejzegv .gt_footnotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -1548,7 +1556,7 @@
   border-right-color: #D3D3D3;
 }
 
-#gginmuyoyp .gt_footnote {
+#wafcejzegv .gt_footnote {
   margin: 0px;
   font-size: 90%;
   padding-top: 4px;
@@ -1557,7 +1565,7 @@
   padding-right: 5px;
 }
 
-#gginmuyoyp .gt_sourcenotes {
+#wafcejzegv .gt_sourcenotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -1571,7 +1579,7 @@
   border-right-color: #D3D3D3;
 }
 
-#gginmuyoyp .gt_sourcenote {
+#wafcejzegv .gt_sourcenote {
   font-size: 90%;
   padding-top: 4px;
   padding-bottom: 4px;
@@ -1579,63 +1587,63 @@
   padding-right: 5px;
 }
 
-#gginmuyoyp .gt_left {
+#wafcejzegv .gt_left {
   text-align: left;
 }
 
-#gginmuyoyp .gt_center {
+#wafcejzegv .gt_center {
   text-align: center;
 }
 
-#gginmuyoyp .gt_right {
+#wafcejzegv .gt_right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#gginmuyoyp .gt_font_normal {
+#wafcejzegv .gt_font_normal {
   font-weight: normal;
 }
 
-#gginmuyoyp .gt_font_bold {
+#wafcejzegv .gt_font_bold {
   font-weight: bold;
 }
 
-#gginmuyoyp .gt_font_italic {
+#wafcejzegv .gt_font_italic {
   font-style: italic;
 }
 
-#gginmuyoyp .gt_super {
+#wafcejzegv .gt_super {
   font-size: 65%;
 }
 
-#gginmuyoyp .gt_footnote_marks {
+#wafcejzegv .gt_footnote_marks {
   font-size: 75%;
   vertical-align: 0.4em;
   position: initial;
 }
 
-#gginmuyoyp .gt_asterisk {
+#wafcejzegv .gt_asterisk {
   font-size: 100%;
   vertical-align: 0;
 }
 
-#gginmuyoyp .gt_indent_1 {
+#wafcejzegv .gt_indent_1 {
   text-indent: 5px;
 }
 
-#gginmuyoyp .gt_indent_2 {
+#wafcejzegv .gt_indent_2 {
   text-indent: 10px;
 }
 
-#gginmuyoyp .gt_indent_3 {
+#wafcejzegv .gt_indent_3 {
   text-indent: 15px;
 }
 
-#gginmuyoyp .gt_indent_4 {
+#wafcejzegv .gt_indent_4 {
   text-indent: 20px;
 }
 
-#gginmuyoyp .gt_indent_5 {
+#wafcejzegv .gt_indent_5 {
   text-indent: 25px;
 }
 </style>
@@ -1722,27 +1730,29 @@
 </table>
 </div>
 
-    trial %>% 
-      tbl_summary(by = grade, include = c(trt, age, stage)) %>%
-      add_stat(fns = everything() ~ focal_smd_level, location = ~ "level")
+``` r
+trial %>% 
+  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  add_stat(fns = everything() ~ focal_smd_level, location = ~ "level")
+```
 
-<div id="daacbqwums" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-<style>#daacbqwums table {
+<div id="xqaonkxoen" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#xqaonkxoen table {
   font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#daacbqwums thead, #daacbqwums tbody, #daacbqwums tfoot, #daacbqwums tr, #daacbqwums td, #daacbqwums th {
+#xqaonkxoen thead, #xqaonkxoen tbody, #xqaonkxoen tfoot, #xqaonkxoen tr, #xqaonkxoen td, #xqaonkxoen th {
   border-style: none;
 }
 
-#daacbqwums p {
+#xqaonkxoen p {
   margin: 0;
   padding: 0;
 }
 
-#daacbqwums .gt_table {
+#xqaonkxoen .gt_table {
   display: table;
   border-collapse: collapse;
   line-height: normal;
@@ -1768,12 +1778,12 @@
   border-left-color: #D3D3D3;
 }
 
-#daacbqwums .gt_caption {
+#xqaonkxoen .gt_caption {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#daacbqwums .gt_title {
+#xqaonkxoen .gt_title {
   color: #333333;
   font-size: 125%;
   font-weight: initial;
@@ -1785,7 +1795,7 @@
   border-bottom-width: 0;
 }
 
-#daacbqwums .gt_subtitle {
+#xqaonkxoen .gt_subtitle {
   color: #333333;
   font-size: 85%;
   font-weight: initial;
@@ -1797,7 +1807,7 @@
   border-top-width: 0;
 }
 
-#daacbqwums .gt_heading {
+#xqaonkxoen .gt_heading {
   background-color: #FFFFFF;
   text-align: center;
   border-bottom-color: #FFFFFF;
@@ -1809,13 +1819,13 @@
   border-right-color: #D3D3D3;
 }
 
-#daacbqwums .gt_bottom_border {
+#xqaonkxoen .gt_bottom_border {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
 }
 
-#daacbqwums .gt_col_headings {
+#xqaonkxoen .gt_col_headings {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -1830,7 +1840,7 @@
   border-right-color: #D3D3D3;
 }
 
-#daacbqwums .gt_col_heading {
+#xqaonkxoen .gt_col_heading {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -1850,7 +1860,7 @@
   overflow-x: hidden;
 }
 
-#daacbqwums .gt_column_spanner_outer {
+#xqaonkxoen .gt_column_spanner_outer {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -1862,15 +1872,15 @@
   padding-right: 4px;
 }
 
-#daacbqwums .gt_column_spanner_outer:first-child {
+#xqaonkxoen .gt_column_spanner_outer:first-child {
   padding-left: 0;
 }
 
-#daacbqwums .gt_column_spanner_outer:last-child {
+#xqaonkxoen .gt_column_spanner_outer:last-child {
   padding-right: 0;
 }
 
-#daacbqwums .gt_column_spanner {
+#xqaonkxoen .gt_column_spanner {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
@@ -1882,11 +1892,11 @@
   width: 100%;
 }
 
-#daacbqwums .gt_spanner_row {
+#xqaonkxoen .gt_spanner_row {
   border-bottom-style: hidden;
 }
 
-#daacbqwums .gt_group_heading {
+#xqaonkxoen .gt_group_heading {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1912,7 +1922,7 @@
   text-align: left;
 }
 
-#daacbqwums .gt_empty_group_heading {
+#xqaonkxoen .gt_empty_group_heading {
   padding: 0.5px;
   color: #333333;
   background-color: #FFFFFF;
@@ -1927,15 +1937,15 @@
   vertical-align: middle;
 }
 
-#daacbqwums .gt_from_md > :first-child {
+#xqaonkxoen .gt_from_md > :first-child {
   margin-top: 0;
 }
 
-#daacbqwums .gt_from_md > :last-child {
+#xqaonkxoen .gt_from_md > :last-child {
   margin-bottom: 0;
 }
 
-#daacbqwums .gt_row {
+#xqaonkxoen .gt_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -1954,7 +1964,7 @@
   overflow-x: hidden;
 }
 
-#daacbqwums .gt_stub {
+#xqaonkxoen .gt_stub {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -1967,7 +1977,7 @@
   padding-right: 5px;
 }
 
-#daacbqwums .gt_stub_row_group {
+#xqaonkxoen .gt_stub_row_group {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -1981,15 +1991,15 @@
   vertical-align: top;
 }
 
-#daacbqwums .gt_row_group_first td {
+#xqaonkxoen .gt_row_group_first td {
   border-top-width: 2px;
 }
 
-#daacbqwums .gt_row_group_first th {
+#xqaonkxoen .gt_row_group_first th {
   border-top-width: 2px;
 }
 
-#daacbqwums .gt_summary_row {
+#xqaonkxoen .gt_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -1999,16 +2009,16 @@
   padding-right: 5px;
 }
 
-#daacbqwums .gt_first_summary_row {
+#xqaonkxoen .gt_first_summary_row {
   border-top-style: solid;
   border-top-color: #D3D3D3;
 }
 
-#daacbqwums .gt_first_summary_row.thick {
+#xqaonkxoen .gt_first_summary_row.thick {
   border-top-width: 2px;
 }
 
-#daacbqwums .gt_last_summary_row {
+#xqaonkxoen .gt_last_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -2018,7 +2028,7 @@
   border-bottom-color: #D3D3D3;
 }
 
-#daacbqwums .gt_grand_summary_row {
+#xqaonkxoen .gt_grand_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -2028,7 +2038,7 @@
   padding-right: 5px;
 }
 
-#daacbqwums .gt_first_grand_summary_row {
+#xqaonkxoen .gt_first_grand_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -2038,7 +2048,7 @@
   border-top-color: #D3D3D3;
 }
 
-#daacbqwums .gt_last_grand_summary_row_top {
+#xqaonkxoen .gt_last_grand_summary_row_top {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -2048,11 +2058,11 @@
   border-bottom-color: #D3D3D3;
 }
 
-#daacbqwums .gt_striped {
+#xqaonkxoen .gt_striped {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
-#daacbqwums .gt_table_body {
+#xqaonkxoen .gt_table_body {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -2061,7 +2071,7 @@
   border-bottom-color: #D3D3D3;
 }
 
-#daacbqwums .gt_footnotes {
+#xqaonkxoen .gt_footnotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -2075,7 +2085,7 @@
   border-right-color: #D3D3D3;
 }
 
-#daacbqwums .gt_footnote {
+#xqaonkxoen .gt_footnote {
   margin: 0px;
   font-size: 90%;
   padding-top: 4px;
@@ -2084,7 +2094,7 @@
   padding-right: 5px;
 }
 
-#daacbqwums .gt_sourcenotes {
+#xqaonkxoen .gt_sourcenotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -2098,7 +2108,7 @@
   border-right-color: #D3D3D3;
 }
 
-#daacbqwums .gt_sourcenote {
+#xqaonkxoen .gt_sourcenote {
   font-size: 90%;
   padding-top: 4px;
   padding-bottom: 4px;
@@ -2106,63 +2116,63 @@
   padding-right: 5px;
 }
 
-#daacbqwums .gt_left {
+#xqaonkxoen .gt_left {
   text-align: left;
 }
 
-#daacbqwums .gt_center {
+#xqaonkxoen .gt_center {
   text-align: center;
 }
 
-#daacbqwums .gt_right {
+#xqaonkxoen .gt_right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#daacbqwums .gt_font_normal {
+#xqaonkxoen .gt_font_normal {
   font-weight: normal;
 }
 
-#daacbqwums .gt_font_bold {
+#xqaonkxoen .gt_font_bold {
   font-weight: bold;
 }
 
-#daacbqwums .gt_font_italic {
+#xqaonkxoen .gt_font_italic {
   font-style: italic;
 }
 
-#daacbqwums .gt_super {
+#xqaonkxoen .gt_super {
   font-size: 65%;
 }
 
-#daacbqwums .gt_footnote_marks {
+#xqaonkxoen .gt_footnote_marks {
   font-size: 75%;
   vertical-align: 0.4em;
   position: initial;
 }
 
-#daacbqwums .gt_asterisk {
+#xqaonkxoen .gt_asterisk {
   font-size: 100%;
   vertical-align: 0;
 }
 
-#daacbqwums .gt_indent_1 {
+#xqaonkxoen .gt_indent_1 {
   text-indent: 5px;
 }
 
-#daacbqwums .gt_indent_2 {
+#xqaonkxoen .gt_indent_2 {
   text-indent: 10px;
 }
 
-#daacbqwums .gt_indent_3 {
+#xqaonkxoen .gt_indent_3 {
   text-indent: 15px;
 }
 
-#daacbqwums .gt_indent_4 {
+#xqaonkxoen .gt_indent_4 {
   text-indent: 20px;
 }
 
-#daacbqwums .gt_indent_5 {
+#xqaonkxoen .gt_indent_5 {
   text-indent: 25px;
 }
 </style>
@@ -2251,33 +2261,37 @@
 
 Here, we create 4 weighted tables:
 
-    library(WeightIt)
-    library(survey)
-    survey_obj <- trial %>% mutate(
-      w = weightit(grade ~ age + stage + trt, data = .)$weights) %>%
-      survey::svydesign(~1, data = ., weights = ~w) 
+``` r
+library(WeightIt)
+library(survey)
+survey_obj <- trial %>% mutate(
+  w = weightit(grade ~ age + stage + trt, data = .)$weights) %>%
+  survey::svydesign(~1, data = ., weights = ~w) 
+```
 
-    survey_obj %>%
-      tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
-      add_stat(fns = everything() ~ pairwise_smd) 
+``` r
+survey_obj %>%
+  tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
+  add_stat(fns = everything() ~ pairwise_smd) 
+```
 
-<div id="cgvwqrokdq" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-<style>#cgvwqrokdq table {
+<div id="xdffjlmzin" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#xdffjlmzin table {
   font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#cgvwqrokdq thead, #cgvwqrokdq tbody, #cgvwqrokdq tfoot, #cgvwqrokdq tr, #cgvwqrokdq td, #cgvwqrokdq th {
+#xdffjlmzin thead, #xdffjlmzin tbody, #xdffjlmzin tfoot, #xdffjlmzin tr, #xdffjlmzin td, #xdffjlmzin th {
   border-style: none;
 }
 
-#cgvwqrokdq p {
+#xdffjlmzin p {
   margin: 0;
   padding: 0;
 }
 
-#cgvwqrokdq .gt_table {
+#xdffjlmzin .gt_table {
   display: table;
   border-collapse: collapse;
   line-height: normal;
@@ -2303,12 +2317,12 @@ Here, we create 4 weighted tables:
   border-left-color: #D3D3D3;
 }
 
-#cgvwqrokdq .gt_caption {
+#xdffjlmzin .gt_caption {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#cgvwqrokdq .gt_title {
+#xdffjlmzin .gt_title {
   color: #333333;
   font-size: 125%;
   font-weight: initial;
@@ -2320,7 +2334,7 @@ Here, we create 4 weighted tables:
   border-bottom-width: 0;
 }
 
-#cgvwqrokdq .gt_subtitle {
+#xdffjlmzin .gt_subtitle {
   color: #333333;
   font-size: 85%;
   font-weight: initial;
@@ -2332,7 +2346,7 @@ Here, we create 4 weighted tables:
   border-top-width: 0;
 }
 
-#cgvwqrokdq .gt_heading {
+#xdffjlmzin .gt_heading {
   background-color: #FFFFFF;
   text-align: center;
   border-bottom-color: #FFFFFF;
@@ -2344,13 +2358,13 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#cgvwqrokdq .gt_bottom_border {
+#xdffjlmzin .gt_bottom_border {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
 }
 
-#cgvwqrokdq .gt_col_headings {
+#xdffjlmzin .gt_col_headings {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -2365,7 +2379,7 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#cgvwqrokdq .gt_col_heading {
+#xdffjlmzin .gt_col_heading {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -2385,7 +2399,7 @@ Here, we create 4 weighted tables:
   overflow-x: hidden;
 }
 
-#cgvwqrokdq .gt_column_spanner_outer {
+#xdffjlmzin .gt_column_spanner_outer {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -2397,15 +2411,15 @@ Here, we create 4 weighted tables:
   padding-right: 4px;
 }
 
-#cgvwqrokdq .gt_column_spanner_outer:first-child {
+#xdffjlmzin .gt_column_spanner_outer:first-child {
   padding-left: 0;
 }
 
-#cgvwqrokdq .gt_column_spanner_outer:last-child {
+#xdffjlmzin .gt_column_spanner_outer:last-child {
   padding-right: 0;
 }
 
-#cgvwqrokdq .gt_column_spanner {
+#xdffjlmzin .gt_column_spanner {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
@@ -2417,11 +2431,11 @@ Here, we create 4 weighted tables:
   width: 100%;
 }
 
-#cgvwqrokdq .gt_spanner_row {
+#xdffjlmzin .gt_spanner_row {
   border-bottom-style: hidden;
 }
 
-#cgvwqrokdq .gt_group_heading {
+#xdffjlmzin .gt_group_heading {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -2447,7 +2461,7 @@ Here, we create 4 weighted tables:
   text-align: left;
 }
 
-#cgvwqrokdq .gt_empty_group_heading {
+#xdffjlmzin .gt_empty_group_heading {
   padding: 0.5px;
   color: #333333;
   background-color: #FFFFFF;
@@ -2462,15 +2476,15 @@ Here, we create 4 weighted tables:
   vertical-align: middle;
 }
 
-#cgvwqrokdq .gt_from_md > :first-child {
+#xdffjlmzin .gt_from_md > :first-child {
   margin-top: 0;
 }
 
-#cgvwqrokdq .gt_from_md > :last-child {
+#xdffjlmzin .gt_from_md > :last-child {
   margin-bottom: 0;
 }
 
-#cgvwqrokdq .gt_row {
+#xdffjlmzin .gt_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -2489,7 +2503,7 @@ Here, we create 4 weighted tables:
   overflow-x: hidden;
 }
 
-#cgvwqrokdq .gt_stub {
+#xdffjlmzin .gt_stub {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -2502,7 +2516,7 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#cgvwqrokdq .gt_stub_row_group {
+#xdffjlmzin .gt_stub_row_group {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -2516,15 +2530,15 @@ Here, we create 4 weighted tables:
   vertical-align: top;
 }
 
-#cgvwqrokdq .gt_row_group_first td {
+#xdffjlmzin .gt_row_group_first td {
   border-top-width: 2px;
 }
 
-#cgvwqrokdq .gt_row_group_first th {
+#xdffjlmzin .gt_row_group_first th {
   border-top-width: 2px;
 }
 
-#cgvwqrokdq .gt_summary_row {
+#xdffjlmzin .gt_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -2534,16 +2548,16 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#cgvwqrokdq .gt_first_summary_row {
+#xdffjlmzin .gt_first_summary_row {
   border-top-style: solid;
   border-top-color: #D3D3D3;
 }
 
-#cgvwqrokdq .gt_first_summary_row.thick {
+#xdffjlmzin .gt_first_summary_row.thick {
   border-top-width: 2px;
 }
 
-#cgvwqrokdq .gt_last_summary_row {
+#xdffjlmzin .gt_last_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -2553,7 +2567,7 @@ Here, we create 4 weighted tables:
   border-bottom-color: #D3D3D3;
 }
 
-#cgvwqrokdq .gt_grand_summary_row {
+#xdffjlmzin .gt_grand_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -2563,7 +2577,7 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#cgvwqrokdq .gt_first_grand_summary_row {
+#xdffjlmzin .gt_first_grand_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -2573,7 +2587,7 @@ Here, we create 4 weighted tables:
   border-top-color: #D3D3D3;
 }
 
-#cgvwqrokdq .gt_last_grand_summary_row_top {
+#xdffjlmzin .gt_last_grand_summary_row_top {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -2583,11 +2597,11 @@ Here, we create 4 weighted tables:
   border-bottom-color: #D3D3D3;
 }
 
-#cgvwqrokdq .gt_striped {
+#xdffjlmzin .gt_striped {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
-#cgvwqrokdq .gt_table_body {
+#xdffjlmzin .gt_table_body {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -2596,7 +2610,7 @@ Here, we create 4 weighted tables:
   border-bottom-color: #D3D3D3;
 }
 
-#cgvwqrokdq .gt_footnotes {
+#xdffjlmzin .gt_footnotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -2610,7 +2624,7 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#cgvwqrokdq .gt_footnote {
+#xdffjlmzin .gt_footnote {
   margin: 0px;
   font-size: 90%;
   padding-top: 4px;
@@ -2619,7 +2633,7 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#cgvwqrokdq .gt_sourcenotes {
+#xdffjlmzin .gt_sourcenotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -2633,7 +2647,7 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#cgvwqrokdq .gt_sourcenote {
+#xdffjlmzin .gt_sourcenote {
   font-size: 90%;
   padding-top: 4px;
   padding-bottom: 4px;
@@ -2641,63 +2655,63 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#cgvwqrokdq .gt_left {
+#xdffjlmzin .gt_left {
   text-align: left;
 }
 
-#cgvwqrokdq .gt_center {
+#xdffjlmzin .gt_center {
   text-align: center;
 }
 
-#cgvwqrokdq .gt_right {
+#xdffjlmzin .gt_right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#cgvwqrokdq .gt_font_normal {
+#xdffjlmzin .gt_font_normal {
   font-weight: normal;
 }
 
-#cgvwqrokdq .gt_font_bold {
+#xdffjlmzin .gt_font_bold {
   font-weight: bold;
 }
 
-#cgvwqrokdq .gt_font_italic {
+#xdffjlmzin .gt_font_italic {
   font-style: italic;
 }
 
-#cgvwqrokdq .gt_super {
+#xdffjlmzin .gt_super {
   font-size: 65%;
 }
 
-#cgvwqrokdq .gt_footnote_marks {
+#xdffjlmzin .gt_footnote_marks {
   font-size: 75%;
   vertical-align: 0.4em;
   position: initial;
 }
 
-#cgvwqrokdq .gt_asterisk {
+#xdffjlmzin .gt_asterisk {
   font-size: 100%;
   vertical-align: 0;
 }
 
-#cgvwqrokdq .gt_indent_1 {
+#xdffjlmzin .gt_indent_1 {
   text-indent: 5px;
 }
 
-#cgvwqrokdq .gt_indent_2 {
+#xdffjlmzin .gt_indent_2 {
   text-indent: 10px;
 }
 
-#cgvwqrokdq .gt_indent_3 {
+#xdffjlmzin .gt_indent_3 {
   text-indent: 15px;
 }
 
-#cgvwqrokdq .gt_indent_4 {
+#xdffjlmzin .gt_indent_4 {
   text-indent: 20px;
 }
 
-#cgvwqrokdq .gt_indent_5 {
+#xdffjlmzin .gt_indent_5 {
   text-indent: 25px;
 }
 </style>
@@ -2795,27 +2809,29 @@ Here, we create 4 weighted tables:
 </table>
 </div>
 
-    survey_obj %>% 
-      tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
-      add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level") 
+``` r
+survey_obj %>% 
+  tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
+  add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level") 
+```
 
-<div id="uevddewsnx" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-<style>#uevddewsnx table {
+<div id="tclowomouu" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#tclowomouu table {
   font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#uevddewsnx thead, #uevddewsnx tbody, #uevddewsnx tfoot, #uevddewsnx tr, #uevddewsnx td, #uevddewsnx th {
+#tclowomouu thead, #tclowomouu tbody, #tclowomouu tfoot, #tclowomouu tr, #tclowomouu td, #tclowomouu th {
   border-style: none;
 }
 
-#uevddewsnx p {
+#tclowomouu p {
   margin: 0;
   padding: 0;
 }
 
-#uevddewsnx .gt_table {
+#tclowomouu .gt_table {
   display: table;
   border-collapse: collapse;
   line-height: normal;
@@ -2841,12 +2857,12 @@ Here, we create 4 weighted tables:
   border-left-color: #D3D3D3;
 }
 
-#uevddewsnx .gt_caption {
+#tclowomouu .gt_caption {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#uevddewsnx .gt_title {
+#tclowomouu .gt_title {
   color: #333333;
   font-size: 125%;
   font-weight: initial;
@@ -2858,7 +2874,7 @@ Here, we create 4 weighted tables:
   border-bottom-width: 0;
 }
 
-#uevddewsnx .gt_subtitle {
+#tclowomouu .gt_subtitle {
   color: #333333;
   font-size: 85%;
   font-weight: initial;
@@ -2870,7 +2886,7 @@ Here, we create 4 weighted tables:
   border-top-width: 0;
 }
 
-#uevddewsnx .gt_heading {
+#tclowomouu .gt_heading {
   background-color: #FFFFFF;
   text-align: center;
   border-bottom-color: #FFFFFF;
@@ -2882,13 +2898,13 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#uevddewsnx .gt_bottom_border {
+#tclowomouu .gt_bottom_border {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
 }
 
-#uevddewsnx .gt_col_headings {
+#tclowomouu .gt_col_headings {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -2903,7 +2919,7 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#uevddewsnx .gt_col_heading {
+#tclowomouu .gt_col_heading {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -2923,7 +2939,7 @@ Here, we create 4 weighted tables:
   overflow-x: hidden;
 }
 
-#uevddewsnx .gt_column_spanner_outer {
+#tclowomouu .gt_column_spanner_outer {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -2935,15 +2951,15 @@ Here, we create 4 weighted tables:
   padding-right: 4px;
 }
 
-#uevddewsnx .gt_column_spanner_outer:first-child {
+#tclowomouu .gt_column_spanner_outer:first-child {
   padding-left: 0;
 }
 
-#uevddewsnx .gt_column_spanner_outer:last-child {
+#tclowomouu .gt_column_spanner_outer:last-child {
   padding-right: 0;
 }
 
-#uevddewsnx .gt_column_spanner {
+#tclowomouu .gt_column_spanner {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
@@ -2955,11 +2971,11 @@ Here, we create 4 weighted tables:
   width: 100%;
 }
 
-#uevddewsnx .gt_spanner_row {
+#tclowomouu .gt_spanner_row {
   border-bottom-style: hidden;
 }
 
-#uevddewsnx .gt_group_heading {
+#tclowomouu .gt_group_heading {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -2985,7 +3001,7 @@ Here, we create 4 weighted tables:
   text-align: left;
 }
 
-#uevddewsnx .gt_empty_group_heading {
+#tclowomouu .gt_empty_group_heading {
   padding: 0.5px;
   color: #333333;
   background-color: #FFFFFF;
@@ -3000,15 +3016,15 @@ Here, we create 4 weighted tables:
   vertical-align: middle;
 }
 
-#uevddewsnx .gt_from_md > :first-child {
+#tclowomouu .gt_from_md > :first-child {
   margin-top: 0;
 }
 
-#uevddewsnx .gt_from_md > :last-child {
+#tclowomouu .gt_from_md > :last-child {
   margin-bottom: 0;
 }
 
-#uevddewsnx .gt_row {
+#tclowomouu .gt_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -3027,7 +3043,7 @@ Here, we create 4 weighted tables:
   overflow-x: hidden;
 }
 
-#uevddewsnx .gt_stub {
+#tclowomouu .gt_stub {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -3040,7 +3056,7 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#uevddewsnx .gt_stub_row_group {
+#tclowomouu .gt_stub_row_group {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -3054,15 +3070,15 @@ Here, we create 4 weighted tables:
   vertical-align: top;
 }
 
-#uevddewsnx .gt_row_group_first td {
+#tclowomouu .gt_row_group_first td {
   border-top-width: 2px;
 }
 
-#uevddewsnx .gt_row_group_first th {
+#tclowomouu .gt_row_group_first th {
   border-top-width: 2px;
 }
 
-#uevddewsnx .gt_summary_row {
+#tclowomouu .gt_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -3072,16 +3088,16 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#uevddewsnx .gt_first_summary_row {
+#tclowomouu .gt_first_summary_row {
   border-top-style: solid;
   border-top-color: #D3D3D3;
 }
 
-#uevddewsnx .gt_first_summary_row.thick {
+#tclowomouu .gt_first_summary_row.thick {
   border-top-width: 2px;
 }
 
-#uevddewsnx .gt_last_summary_row {
+#tclowomouu .gt_last_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -3091,7 +3107,7 @@ Here, we create 4 weighted tables:
   border-bottom-color: #D3D3D3;
 }
 
-#uevddewsnx .gt_grand_summary_row {
+#tclowomouu .gt_grand_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -3101,7 +3117,7 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#uevddewsnx .gt_first_grand_summary_row {
+#tclowomouu .gt_first_grand_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -3111,7 +3127,7 @@ Here, we create 4 weighted tables:
   border-top-color: #D3D3D3;
 }
 
-#uevddewsnx .gt_last_grand_summary_row_top {
+#tclowomouu .gt_last_grand_summary_row_top {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -3121,11 +3137,11 @@ Here, we create 4 weighted tables:
   border-bottom-color: #D3D3D3;
 }
 
-#uevddewsnx .gt_striped {
+#tclowomouu .gt_striped {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
-#uevddewsnx .gt_table_body {
+#tclowomouu .gt_table_body {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -3134,7 +3150,7 @@ Here, we create 4 weighted tables:
   border-bottom-color: #D3D3D3;
 }
 
-#uevddewsnx .gt_footnotes {
+#tclowomouu .gt_footnotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -3148,7 +3164,7 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#uevddewsnx .gt_footnote {
+#tclowomouu .gt_footnote {
   margin: 0px;
   font-size: 90%;
   padding-top: 4px;
@@ -3157,7 +3173,7 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#uevddewsnx .gt_sourcenotes {
+#tclowomouu .gt_sourcenotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -3171,7 +3187,7 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#uevddewsnx .gt_sourcenote {
+#tclowomouu .gt_sourcenote {
   font-size: 90%;
   padding-top: 4px;
   padding-bottom: 4px;
@@ -3179,63 +3195,63 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#uevddewsnx .gt_left {
+#tclowomouu .gt_left {
   text-align: left;
 }
 
-#uevddewsnx .gt_center {
+#tclowomouu .gt_center {
   text-align: center;
 }
 
-#uevddewsnx .gt_right {
+#tclowomouu .gt_right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#uevddewsnx .gt_font_normal {
+#tclowomouu .gt_font_normal {
   font-weight: normal;
 }
 
-#uevddewsnx .gt_font_bold {
+#tclowomouu .gt_font_bold {
   font-weight: bold;
 }
 
-#uevddewsnx .gt_font_italic {
+#tclowomouu .gt_font_italic {
   font-style: italic;
 }
 
-#uevddewsnx .gt_super {
+#tclowomouu .gt_super {
   font-size: 65%;
 }
 
-#uevddewsnx .gt_footnote_marks {
+#tclowomouu .gt_footnote_marks {
   font-size: 75%;
   vertical-align: 0.4em;
   position: initial;
 }
 
-#uevddewsnx .gt_asterisk {
+#tclowomouu .gt_asterisk {
   font-size: 100%;
   vertical-align: 0;
 }
 
-#uevddewsnx .gt_indent_1 {
+#tclowomouu .gt_indent_1 {
   text-indent: 5px;
 }
 
-#uevddewsnx .gt_indent_2 {
+#tclowomouu .gt_indent_2 {
   text-indent: 10px;
 }
 
-#uevddewsnx .gt_indent_3 {
+#tclowomouu .gt_indent_3 {
   text-indent: 15px;
 }
 
-#uevddewsnx .gt_indent_4 {
+#tclowomouu .gt_indent_4 {
   text-indent: 20px;
 }
 
-#uevddewsnx .gt_indent_5 {
+#tclowomouu .gt_indent_5 {
   text-indent: 25px;
 }
 </style>
@@ -3333,27 +3349,29 @@ Here, we create 4 weighted tables:
 </table>
 </div>
 
-    survey_obj %>% 
-      tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
-      add_stat(fns = everything() ~ focal_smd) 
+``` r
+survey_obj %>% 
+  tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
+  add_stat(fns = everything() ~ focal_smd) 
+```
 
-<div id="qwdmshnvdm" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-<style>#qwdmshnvdm table {
+<div id="scajqlnymw" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#scajqlnymw table {
   font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#qwdmshnvdm thead, #qwdmshnvdm tbody, #qwdmshnvdm tfoot, #qwdmshnvdm tr, #qwdmshnvdm td, #qwdmshnvdm th {
+#scajqlnymw thead, #scajqlnymw tbody, #scajqlnymw tfoot, #scajqlnymw tr, #scajqlnymw td, #scajqlnymw th {
   border-style: none;
 }
 
-#qwdmshnvdm p {
+#scajqlnymw p {
   margin: 0;
   padding: 0;
 }
 
-#qwdmshnvdm .gt_table {
+#scajqlnymw .gt_table {
   display: table;
   border-collapse: collapse;
   line-height: normal;
@@ -3379,12 +3397,12 @@ Here, we create 4 weighted tables:
   border-left-color: #D3D3D3;
 }
 
-#qwdmshnvdm .gt_caption {
+#scajqlnymw .gt_caption {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#qwdmshnvdm .gt_title {
+#scajqlnymw .gt_title {
   color: #333333;
   font-size: 125%;
   font-weight: initial;
@@ -3396,7 +3414,7 @@ Here, we create 4 weighted tables:
   border-bottom-width: 0;
 }
 
-#qwdmshnvdm .gt_subtitle {
+#scajqlnymw .gt_subtitle {
   color: #333333;
   font-size: 85%;
   font-weight: initial;
@@ -3408,7 +3426,7 @@ Here, we create 4 weighted tables:
   border-top-width: 0;
 }
 
-#qwdmshnvdm .gt_heading {
+#scajqlnymw .gt_heading {
   background-color: #FFFFFF;
   text-align: center;
   border-bottom-color: #FFFFFF;
@@ -3420,13 +3438,13 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#qwdmshnvdm .gt_bottom_border {
+#scajqlnymw .gt_bottom_border {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
 }
 
-#qwdmshnvdm .gt_col_headings {
+#scajqlnymw .gt_col_headings {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -3441,7 +3459,7 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#qwdmshnvdm .gt_col_heading {
+#scajqlnymw .gt_col_heading {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -3461,7 +3479,7 @@ Here, we create 4 weighted tables:
   overflow-x: hidden;
 }
 
-#qwdmshnvdm .gt_column_spanner_outer {
+#scajqlnymw .gt_column_spanner_outer {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -3473,15 +3491,15 @@ Here, we create 4 weighted tables:
   padding-right: 4px;
 }
 
-#qwdmshnvdm .gt_column_spanner_outer:first-child {
+#scajqlnymw .gt_column_spanner_outer:first-child {
   padding-left: 0;
 }
 
-#qwdmshnvdm .gt_column_spanner_outer:last-child {
+#scajqlnymw .gt_column_spanner_outer:last-child {
   padding-right: 0;
 }
 
-#qwdmshnvdm .gt_column_spanner {
+#scajqlnymw .gt_column_spanner {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
@@ -3493,11 +3511,11 @@ Here, we create 4 weighted tables:
   width: 100%;
 }
 
-#qwdmshnvdm .gt_spanner_row {
+#scajqlnymw .gt_spanner_row {
   border-bottom-style: hidden;
 }
 
-#qwdmshnvdm .gt_group_heading {
+#scajqlnymw .gt_group_heading {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -3523,7 +3541,7 @@ Here, we create 4 weighted tables:
   text-align: left;
 }
 
-#qwdmshnvdm .gt_empty_group_heading {
+#scajqlnymw .gt_empty_group_heading {
   padding: 0.5px;
   color: #333333;
   background-color: #FFFFFF;
@@ -3538,15 +3556,15 @@ Here, we create 4 weighted tables:
   vertical-align: middle;
 }
 
-#qwdmshnvdm .gt_from_md > :first-child {
+#scajqlnymw .gt_from_md > :first-child {
   margin-top: 0;
 }
 
-#qwdmshnvdm .gt_from_md > :last-child {
+#scajqlnymw .gt_from_md > :last-child {
   margin-bottom: 0;
 }
 
-#qwdmshnvdm .gt_row {
+#scajqlnymw .gt_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -3565,7 +3583,7 @@ Here, we create 4 weighted tables:
   overflow-x: hidden;
 }
 
-#qwdmshnvdm .gt_stub {
+#scajqlnymw .gt_stub {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -3578,7 +3596,7 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#qwdmshnvdm .gt_stub_row_group {
+#scajqlnymw .gt_stub_row_group {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -3592,15 +3610,15 @@ Here, we create 4 weighted tables:
   vertical-align: top;
 }
 
-#qwdmshnvdm .gt_row_group_first td {
+#scajqlnymw .gt_row_group_first td {
   border-top-width: 2px;
 }
 
-#qwdmshnvdm .gt_row_group_first th {
+#scajqlnymw .gt_row_group_first th {
   border-top-width: 2px;
 }
 
-#qwdmshnvdm .gt_summary_row {
+#scajqlnymw .gt_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -3610,16 +3628,16 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#qwdmshnvdm .gt_first_summary_row {
+#scajqlnymw .gt_first_summary_row {
   border-top-style: solid;
   border-top-color: #D3D3D3;
 }
 
-#qwdmshnvdm .gt_first_summary_row.thick {
+#scajqlnymw .gt_first_summary_row.thick {
   border-top-width: 2px;
 }
 
-#qwdmshnvdm .gt_last_summary_row {
+#scajqlnymw .gt_last_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -3629,7 +3647,7 @@ Here, we create 4 weighted tables:
   border-bottom-color: #D3D3D3;
 }
 
-#qwdmshnvdm .gt_grand_summary_row {
+#scajqlnymw .gt_grand_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -3639,7 +3657,7 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#qwdmshnvdm .gt_first_grand_summary_row {
+#scajqlnymw .gt_first_grand_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -3649,7 +3667,7 @@ Here, we create 4 weighted tables:
   border-top-color: #D3D3D3;
 }
 
-#qwdmshnvdm .gt_last_grand_summary_row_top {
+#scajqlnymw .gt_last_grand_summary_row_top {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -3659,11 +3677,11 @@ Here, we create 4 weighted tables:
   border-bottom-color: #D3D3D3;
 }
 
-#qwdmshnvdm .gt_striped {
+#scajqlnymw .gt_striped {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
-#qwdmshnvdm .gt_table_body {
+#scajqlnymw .gt_table_body {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -3672,7 +3690,7 @@ Here, we create 4 weighted tables:
   border-bottom-color: #D3D3D3;
 }
 
-#qwdmshnvdm .gt_footnotes {
+#scajqlnymw .gt_footnotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -3686,7 +3704,7 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#qwdmshnvdm .gt_footnote {
+#scajqlnymw .gt_footnote {
   margin: 0px;
   font-size: 90%;
   padding-top: 4px;
@@ -3695,7 +3713,7 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#qwdmshnvdm .gt_sourcenotes {
+#scajqlnymw .gt_sourcenotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -3709,7 +3727,7 @@ Here, we create 4 weighted tables:
   border-right-color: #D3D3D3;
 }
 
-#qwdmshnvdm .gt_sourcenote {
+#scajqlnymw .gt_sourcenote {
   font-size: 90%;
   padding-top: 4px;
   padding-bottom: 4px;
@@ -3717,63 +3735,63 @@ Here, we create 4 weighted tables:
   padding-right: 5px;
 }
 
-#qwdmshnvdm .gt_left {
+#scajqlnymw .gt_left {
   text-align: left;
 }
 
-#qwdmshnvdm .gt_center {
+#scajqlnymw .gt_center {
   text-align: center;
 }
 
-#qwdmshnvdm .gt_right {
+#scajqlnymw .gt_right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#qwdmshnvdm .gt_font_normal {
+#scajqlnymw .gt_font_normal {
   font-weight: normal;
 }
 
-#qwdmshnvdm .gt_font_bold {
+#scajqlnymw .gt_font_bold {
   font-weight: bold;
 }
 
-#qwdmshnvdm .gt_font_italic {
+#scajqlnymw .gt_font_italic {
   font-style: italic;
 }
 
-#qwdmshnvdm .gt_super {
+#scajqlnymw .gt_super {
   font-size: 65%;
 }
 
-#qwdmshnvdm .gt_footnote_marks {
+#scajqlnymw .gt_footnote_marks {
   font-size: 75%;
   vertical-align: 0.4em;
   position: initial;
 }
 
-#qwdmshnvdm .gt_asterisk {
+#scajqlnymw .gt_asterisk {
   font-size: 100%;
   vertical-align: 0;
 }
 
-#qwdmshnvdm .gt_indent_1 {
+#scajqlnymw .gt_indent_1 {
   text-indent: 5px;
 }
 
-#qwdmshnvdm .gt_indent_2 {
+#scajqlnymw .gt_indent_2 {
   text-indent: 10px;
 }
 
-#qwdmshnvdm .gt_indent_3 {
+#scajqlnymw .gt_indent_3 {
   text-indent: 15px;
 }
 
-#qwdmshnvdm .gt_indent_4 {
+#scajqlnymw .gt_indent_4 {
   text-indent: 20px;
 }
 
-#qwdmshnvdm .gt_indent_5 {
+#scajqlnymw .gt_indent_5 {
   text-indent: 25px;
 }
 </style>
@@ -3862,27 +3880,29 @@ Here, we create 4 weighted tables:
 
 Check
 
-    survey_obj %>% 
-      tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
-      add_stat(fns = everything() ~ focal_smd_level, location = ~ "level") 
+``` r
+survey_obj %>% 
+  tbl_svysummary(by = grade, include = c(trt, age, stage)) %>% 
+  add_stat(fns = everything() ~ focal_smd_level, location = ~ "level") 
+```
 
-<div id="csunzltxst" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
-<style>#csunzltxst table {
+<div id="mchgrdzepu" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>#mchgrdzepu table {
   font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#csunzltxst thead, #csunzltxst tbody, #csunzltxst tfoot, #csunzltxst tr, #csunzltxst td, #csunzltxst th {
+#mchgrdzepu thead, #mchgrdzepu tbody, #mchgrdzepu tfoot, #mchgrdzepu tr, #mchgrdzepu td, #mchgrdzepu th {
   border-style: none;
 }
 
-#csunzltxst p {
+#mchgrdzepu p {
   margin: 0;
   padding: 0;
 }
 
-#csunzltxst .gt_table {
+#mchgrdzepu .gt_table {
   display: table;
   border-collapse: collapse;
   line-height: normal;
@@ -3908,12 +3928,12 @@ Check
   border-left-color: #D3D3D3;
 }
 
-#csunzltxst .gt_caption {
+#mchgrdzepu .gt_caption {
   padding-top: 4px;
   padding-bottom: 4px;
 }
 
-#csunzltxst .gt_title {
+#mchgrdzepu .gt_title {
   color: #333333;
   font-size: 125%;
   font-weight: initial;
@@ -3925,7 +3945,7 @@ Check
   border-bottom-width: 0;
 }
 
-#csunzltxst .gt_subtitle {
+#mchgrdzepu .gt_subtitle {
   color: #333333;
   font-size: 85%;
   font-weight: initial;
@@ -3937,7 +3957,7 @@ Check
   border-top-width: 0;
 }
 
-#csunzltxst .gt_heading {
+#mchgrdzepu .gt_heading {
   background-color: #FFFFFF;
   text-align: center;
   border-bottom-color: #FFFFFF;
@@ -3949,13 +3969,13 @@ Check
   border-right-color: #D3D3D3;
 }
 
-#csunzltxst .gt_bottom_border {
+#mchgrdzepu .gt_bottom_border {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
 }
 
-#csunzltxst .gt_col_headings {
+#mchgrdzepu .gt_col_headings {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -3970,7 +3990,7 @@ Check
   border-right-color: #D3D3D3;
 }
 
-#csunzltxst .gt_col_heading {
+#mchgrdzepu .gt_col_heading {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -3990,7 +4010,7 @@ Check
   overflow-x: hidden;
 }
 
-#csunzltxst .gt_column_spanner_outer {
+#mchgrdzepu .gt_column_spanner_outer {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -4002,15 +4022,15 @@ Check
   padding-right: 4px;
 }
 
-#csunzltxst .gt_column_spanner_outer:first-child {
+#mchgrdzepu .gt_column_spanner_outer:first-child {
   padding-left: 0;
 }
 
-#csunzltxst .gt_column_spanner_outer:last-child {
+#mchgrdzepu .gt_column_spanner_outer:last-child {
   padding-right: 0;
 }
 
-#csunzltxst .gt_column_spanner {
+#mchgrdzepu .gt_column_spanner {
   border-bottom-style: solid;
   border-bottom-width: 2px;
   border-bottom-color: #D3D3D3;
@@ -4022,11 +4042,11 @@ Check
   width: 100%;
 }
 
-#csunzltxst .gt_spanner_row {
+#mchgrdzepu .gt_spanner_row {
   border-bottom-style: hidden;
 }
 
-#csunzltxst .gt_group_heading {
+#mchgrdzepu .gt_group_heading {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -4052,7 +4072,7 @@ Check
   text-align: left;
 }
 
-#csunzltxst .gt_empty_group_heading {
+#mchgrdzepu .gt_empty_group_heading {
   padding: 0.5px;
   color: #333333;
   background-color: #FFFFFF;
@@ -4067,15 +4087,15 @@ Check
   vertical-align: middle;
 }
 
-#csunzltxst .gt_from_md > :first-child {
+#mchgrdzepu .gt_from_md > :first-child {
   margin-top: 0;
 }
 
-#csunzltxst .gt_from_md > :last-child {
+#mchgrdzepu .gt_from_md > :last-child {
   margin-bottom: 0;
 }
 
-#csunzltxst .gt_row {
+#mchgrdzepu .gt_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -4094,7 +4114,7 @@ Check
   overflow-x: hidden;
 }
 
-#csunzltxst .gt_stub {
+#mchgrdzepu .gt_stub {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -4107,7 +4127,7 @@ Check
   padding-right: 5px;
 }
 
-#csunzltxst .gt_stub_row_group {
+#mchgrdzepu .gt_stub_row_group {
   color: #333333;
   background-color: #FFFFFF;
   font-size: 100%;
@@ -4121,15 +4141,15 @@ Check
   vertical-align: top;
 }
 
-#csunzltxst .gt_row_group_first td {
+#mchgrdzepu .gt_row_group_first td {
   border-top-width: 2px;
 }
 
-#csunzltxst .gt_row_group_first th {
+#mchgrdzepu .gt_row_group_first th {
   border-top-width: 2px;
 }
 
-#csunzltxst .gt_summary_row {
+#mchgrdzepu .gt_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -4139,16 +4159,16 @@ Check
   padding-right: 5px;
 }
 
-#csunzltxst .gt_first_summary_row {
+#mchgrdzepu .gt_first_summary_row {
   border-top-style: solid;
   border-top-color: #D3D3D3;
 }
 
-#csunzltxst .gt_first_summary_row.thick {
+#mchgrdzepu .gt_first_summary_row.thick {
   border-top-width: 2px;
 }
 
-#csunzltxst .gt_last_summary_row {
+#mchgrdzepu .gt_last_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -4158,7 +4178,7 @@ Check
   border-bottom-color: #D3D3D3;
 }
 
-#csunzltxst .gt_grand_summary_row {
+#mchgrdzepu .gt_grand_summary_row {
   color: #333333;
   background-color: #FFFFFF;
   text-transform: inherit;
@@ -4168,7 +4188,7 @@ Check
   padding-right: 5px;
 }
 
-#csunzltxst .gt_first_grand_summary_row {
+#mchgrdzepu .gt_first_grand_summary_row {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -4178,7 +4198,7 @@ Check
   border-top-color: #D3D3D3;
 }
 
-#csunzltxst .gt_last_grand_summary_row_top {
+#mchgrdzepu .gt_last_grand_summary_row_top {
   padding-top: 8px;
   padding-bottom: 8px;
   padding-left: 5px;
@@ -4188,11 +4208,11 @@ Check
   border-bottom-color: #D3D3D3;
 }
 
-#csunzltxst .gt_striped {
+#mchgrdzepu .gt_striped {
   background-color: rgba(128, 128, 128, 0.05);
 }
 
-#csunzltxst .gt_table_body {
+#mchgrdzepu .gt_table_body {
   border-top-style: solid;
   border-top-width: 2px;
   border-top-color: #D3D3D3;
@@ -4201,7 +4221,7 @@ Check
   border-bottom-color: #D3D3D3;
 }
 
-#csunzltxst .gt_footnotes {
+#mchgrdzepu .gt_footnotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -4215,7 +4235,7 @@ Check
   border-right-color: #D3D3D3;
 }
 
-#csunzltxst .gt_footnote {
+#mchgrdzepu .gt_footnote {
   margin: 0px;
   font-size: 90%;
   padding-top: 4px;
@@ -4224,7 +4244,7 @@ Check
   padding-right: 5px;
 }
 
-#csunzltxst .gt_sourcenotes {
+#mchgrdzepu .gt_sourcenotes {
   color: #333333;
   background-color: #FFFFFF;
   border-bottom-style: none;
@@ -4238,7 +4258,7 @@ Check
   border-right-color: #D3D3D3;
 }
 
-#csunzltxst .gt_sourcenote {
+#mchgrdzepu .gt_sourcenote {
   font-size: 90%;
   padding-top: 4px;
   padding-bottom: 4px;
@@ -4246,63 +4266,63 @@ Check
   padding-right: 5px;
 }
 
-#csunzltxst .gt_left {
+#mchgrdzepu .gt_left {
   text-align: left;
 }
 
-#csunzltxst .gt_center {
+#mchgrdzepu .gt_center {
   text-align: center;
 }
 
-#csunzltxst .gt_right {
+#mchgrdzepu .gt_right {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#csunzltxst .gt_font_normal {
+#mchgrdzepu .gt_font_normal {
   font-weight: normal;
 }
 
-#csunzltxst .gt_font_bold {
+#mchgrdzepu .gt_font_bold {
   font-weight: bold;
 }
 
-#csunzltxst .gt_font_italic {
+#mchgrdzepu .gt_font_italic {
   font-style: italic;
 }
 
-#csunzltxst .gt_super {
+#mchgrdzepu .gt_super {
   font-size: 65%;
 }
 
-#csunzltxst .gt_footnote_marks {
+#mchgrdzepu .gt_footnote_marks {
   font-size: 75%;
   vertical-align: 0.4em;
   position: initial;
 }
 
-#csunzltxst .gt_asterisk {
+#mchgrdzepu .gt_asterisk {
   font-size: 100%;
   vertical-align: 0;
 }
 
-#csunzltxst .gt_indent_1 {
+#mchgrdzepu .gt_indent_1 {
   text-indent: 5px;
 }
 
-#csunzltxst .gt_indent_2 {
+#mchgrdzepu .gt_indent_2 {
   text-indent: 10px;
 }
 
-#csunzltxst .gt_indent_3 {
+#mchgrdzepu .gt_indent_3 {
   text-indent: 15px;
 }
 
-#csunzltxst .gt_indent_4 {
+#mchgrdzepu .gt_indent_4 {
   text-indent: 20px;
 }
 
-#csunzltxst .gt_indent_5 {
+#mchgrdzepu .gt_indent_5 {
   text-indent: 25px;
 }
 </style>
