@@ -14,7 +14,7 @@ First, wrapper functions are defined for the core functionality (e.g.,
 distinct ways for distinct use cases.  
   
   
-
+  
 ### Defining the functions
 
   
