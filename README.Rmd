@@ -16,7 +16,7 @@ First, wrapper functions are defined for the core functionality (e.g., *core_smd
 ### Defining the functions
 \
 
-##### 1) Load dependencies
+#### 1) Load dependencies
 
 ```{r, results='hide', warning=FALSE, message=FALSE, error=FALSE}
 
@@ -26,7 +26,7 @@ library(tidyverse) # For data wrangling and misc.
 ```
 \
 
-##### 2) Create the core functionality, via **core_smd_function()**, for taking the data and outputting the SMD results
+#### 2) Create the core functionality, via **core_smd_function()**, for taking the data and outputting the SMD results
 
 ```{r}
 
@@ -80,7 +80,7 @@ core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
 ```
 \
 
-##### 3) Create a function *clean_smd_data()* to prepare the input data for use by the *core_smd_function()*
+#### 3) Create a function *clean_smd_data()* to prepare the input data for use by the *core_smd_function()*
 
 ```{r}
 
@@ -115,7 +115,7 @@ clean_smd_data <- function(data, variable, by, tbl) {
 ```
 \
 
-##### 4) Create a function to apply the *core_smd_function()* in various ways for different use cases
+#### 4) Create a function to apply the *core_smd_function()* in various ways for different use cases
 
 This function first cleans the data and then applies the *core_smd_function()* but allows two distinct things to vary according to user preference:
 
@@ -150,7 +150,7 @@ applied_smd_function <- function(data, variable, by, tbl, ref_group = FALSE, loc
 ```
 \
 
-##### Finally, four caller functions are defined to call the **applied_smd_function()** with preset values for *location* and for *ref_group*
+#### 5) Finally, four caller functions are defined to call the **applied_smd_function()** with preset values for *location* and for *ref_group*
 
 ```{r}
 
@@ -179,7 +179,7 @@ focal_smd_level <- function(data, variable, by, tbl, ...) {
 ### Using the functions with gtsummary.
 \
 
-##### For unweighted data (with a *tbl_summary()* object), see the following examples:
+#### For unweighted data (with a *tbl_summary()* object), see the following examples:
 
 For one SMD per variable, use either **pairwise_smd** or **focal_smd**. There's no need to specify an input to the location argument of add_stat (as this defaults to "label")
 ```{r, warning=FALSE, message=FALSE, error=FALSE}
@@ -199,7 +199,7 @@ trial %>%
 </center>
 \
 
-##### For weighted data, use *tbl_svysummary()*:
+#### For weighted data, use *tbl_svysummary()*:
 
 In this examply we use weights from **WeightIt** package. The **survey** package is necessary.
 ```{r, results='hide', warning=FALSE, message=FALSE, error=FALSE}
