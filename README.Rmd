@@ -2,7 +2,7 @@
 title: "README"
 author: "Zheer"
 date: "2023-11-04"
-output: html_document
+output: github_document
 ---
 
 ##### First, we load dependencies
