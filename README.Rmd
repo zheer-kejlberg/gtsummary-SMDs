@@ -226,7 +226,7 @@ library(survey) # To create a surveydesign object (a "weighted" dataset)
 Application of the *add_stat()* function is identical to the non-weighted case, but it is applied to a *tbl_svysummary* object instead of a *tbl_summary* object.
 ```{r, warning=FALSE, message=FALSE, error=FALSE}
 trial %>% mutate(
-  w = weightit(grade ~ age + stage + trt, data = .)$weights) %>% # create the weights
+  w = weightit(grade ~ age + stage + trt, data = ., focal="I")$weights) %>% # create ATT weights
   survey::svydesign(~1, data = ., weights = ~w) %>% # creathe the svydesign object
   tbl_svysummary(by = grade, include = c(trt, age, stage)) %>%
   add_stat(fns = everything() ~ focal_smd)

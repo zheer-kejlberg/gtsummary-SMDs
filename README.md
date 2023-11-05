@@ -213,7 +213,7 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd)
 ```
 
-<div id="ljspoquhhv" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="lhhxlhfaws" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -317,7 +317,7 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
 ```
 
-<div id="fztrktknhw" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="hgjpdcpunc" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -436,21 +436,21 @@ instead of a *tbl_summary* object.
 
 ``` r
 trial %>% mutate(
-  w = weightit(grade ~ age + stage + trt, data = .)$weights) %>% # create the weights
+  w = weightit(grade ~ age + stage + trt, data = ., focal="I")$weights) %>% # create ATT weights
   survey::svydesign(~1, data = ., weights = ~w) %>% # creathe the svydesign object
   tbl_svysummary(by = grade, include = c(trt, age, stage)) %>%
   add_stat(fns = everything() ~ focal_smd)
 ```
 
-<div id="cpxctpdvxf" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="zzjeluvnhb" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
     &#10;    <tr class="gt_col_headings">
       <th class="gt_col_heading gt_columns_bottom_border gt_left" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;Characteristic&lt;/strong&gt;"><strong>Characteristic</strong></th>
-      <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;I&lt;/strong&gt;, N = 201&lt;span class=&quot;gt_footnote_marks&quot; style=&quot;white-space:nowrap;font-style:italic;font-weight:normal;&quot;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/span&gt;"><strong>I</strong>, N = 201<span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>1</sup></span></th>
-      <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;II&lt;/strong&gt;, N = 199&lt;span class=&quot;gt_footnote_marks&quot; style=&quot;white-space:nowrap;font-style:italic;font-weight:normal;&quot;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/span&gt;"><strong>II</strong>, N = 199<span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>1</sup></span></th>
-      <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;III&lt;/strong&gt;, N = 199&lt;span class=&quot;gt_footnote_marks&quot; style=&quot;white-space:nowrap;font-style:italic;font-weight:normal;&quot;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/span&gt;"><strong>III</strong>, N = 199<span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>1</sup></span></th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;I&lt;/strong&gt;, N = 68&lt;span class=&quot;gt_footnote_marks&quot; style=&quot;white-space:nowrap;font-style:italic;font-weight:normal;&quot;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/span&gt;"><strong>I</strong>, N = 68<span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>1</sup></span></th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;II&lt;/strong&gt;, N = 68&lt;span class=&quot;gt_footnote_marks&quot; style=&quot;white-space:nowrap;font-style:italic;font-weight:normal;&quot;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/span&gt;"><strong>II</strong>, N = 68<span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>1</sup></span></th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="&lt;strong&gt;III&lt;/strong&gt;, N = 68&lt;span class=&quot;gt_footnote_marks&quot; style=&quot;white-space:nowrap;font-style:italic;font-weight:normal;&quot;&gt;&lt;sup&gt;1&lt;/sup&gt;&lt;/span&gt;"><strong>III</strong>, N = 68<span class="gt_footnote_marks" style="white-space:nowrap;font-style:italic;font-weight:normal;"><sup>1</sup></span></th>
       <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="I vs. II">I vs. II</th>
       <th class="gt_col_heading gt_columns_bottom_border gt_center" rowspan="1" colspan="1" scope="col" id="I vs. III">I vs. III</th>
     </tr>
@@ -460,60 +460,60 @@ trial %>% mutate(
 <td headers="stat_1" class="gt_row gt_center"><br /></td>
 <td headers="stat_2" class="gt_row gt_center"><br /></td>
 <td headers="stat_3" class="gt_row gt_center"><br /></td>
-<td headers="I vs. II" class="gt_row gt_center">0.012</td>
-<td headers="I vs. III" class="gt_row gt_center">0.034</td></tr>
+<td headers="I vs. II" class="gt_row gt_center">0.030</td>
+<td headers="I vs. III" class="gt_row gt_center">0.064</td></tr>
     <tr><td headers="label" class="gt_row gt_left">    Drug A</td>
-<td headers="stat_1" class="gt_row gt_center">100 (50%)</td>
-<td headers="stat_2" class="gt_row gt_center">98 (49%)</td>
-<td headers="stat_3" class="gt_row gt_center">96 (48%)</td>
+<td headers="stat_1" class="gt_row gt_center">35 (51%)</td>
+<td headers="stat_2" class="gt_row gt_center">36 (53%)</td>
+<td headers="stat_3" class="gt_row gt_center">33 (48%)</td>
 <td headers="I vs. II" class="gt_row gt_center"><br /></td>
 <td headers="I vs. III" class="gt_row gt_center"><br /></td></tr>
     <tr><td headers="label" class="gt_row gt_left">    Drug B</td>
-<td headers="stat_1" class="gt_row gt_center">101 (50%)</td>
-<td headers="stat_2" class="gt_row gt_center">101 (51%)</td>
-<td headers="stat_3" class="gt_row gt_center">104 (52%)</td>
+<td headers="stat_1" class="gt_row gt_center">33 (49%)</td>
+<td headers="stat_2" class="gt_row gt_center">32 (47%)</td>
+<td headers="stat_3" class="gt_row gt_center">35 (52%)</td>
 <td headers="I vs. II" class="gt_row gt_center"><br /></td>
 <td headers="I vs. III" class="gt_row gt_center"><br /></td></tr>
     <tr><td headers="label" class="gt_row gt_left">Age</td>
-<td headers="stat_1" class="gt_row gt_center">47 (38, 57)</td>
-<td headers="stat_2" class="gt_row gt_center">49 (34, 57)</td>
-<td headers="stat_3" class="gt_row gt_center">46 (38, 56)</td>
-<td headers="I vs. II" class="gt_row gt_center">-0.012</td>
-<td headers="I vs. III" class="gt_row gt_center">-0.005</td></tr>
+<td headers="stat_1" class="gt_row gt_center">47 (37, 56)</td>
+<td headers="stat_2" class="gt_row gt_center">46 (34, 56)</td>
+<td headers="stat_3" class="gt_row gt_center">45 (38, 54)</td>
+<td headers="I vs. II" class="gt_row gt_center">-0.013</td>
+<td headers="I vs. III" class="gt_row gt_center">-0.007</td></tr>
     <tr><td headers="label" class="gt_row gt_left">    Unknown</td>
-<td headers="stat_1" class="gt_row gt_center">12</td>
-<td headers="stat_2" class="gt_row gt_center">11</td>
-<td headers="stat_3" class="gt_row gt_center">10</td>
+<td headers="stat_1" class="gt_row gt_center">2</td>
+<td headers="stat_2" class="gt_row gt_center">2</td>
+<td headers="stat_3" class="gt_row gt_center">2</td>
 <td headers="I vs. II" class="gt_row gt_center"><br /></td>
 <td headers="I vs. III" class="gt_row gt_center"><br /></td></tr>
     <tr><td headers="label" class="gt_row gt_left">T Stage</td>
 <td headers="stat_1" class="gt_row gt_center"><br /></td>
 <td headers="stat_2" class="gt_row gt_center"><br /></td>
 <td headers="stat_3" class="gt_row gt_center"><br /></td>
-<td headers="I vs. II" class="gt_row gt_center">0.044</td>
-<td headers="I vs. III" class="gt_row gt_center">0.077</td></tr>
+<td headers="I vs. II" class="gt_row gt_center">0.078</td>
+<td headers="I vs. III" class="gt_row gt_center">0.020</td></tr>
     <tr><td headers="label" class="gt_row gt_left">    T1</td>
-<td headers="stat_1" class="gt_row gt_center">59 (30%)</td>
-<td headers="stat_2" class="gt_row gt_center">55 (28%)</td>
-<td headers="stat_3" class="gt_row gt_center">52 (26%)</td>
+<td headers="stat_1" class="gt_row gt_center">17 (25%)</td>
+<td headers="stat_2" class="gt_row gt_center">19 (27%)</td>
+<td headers="stat_3" class="gt_row gt_center">17 (25%)</td>
 <td headers="I vs. II" class="gt_row gt_center"><br /></td>
 <td headers="I vs. III" class="gt_row gt_center"><br /></td></tr>
     <tr><td headers="label" class="gt_row gt_left">    T2</td>
-<td headers="stat_1" class="gt_row gt_center">53 (27%)</td>
-<td headers="stat_2" class="gt_row gt_center">55 (28%)</td>
-<td headers="stat_3" class="gt_row gt_center">54 (27%)</td>
+<td headers="stat_1" class="gt_row gt_center">18 (26%)</td>
+<td headers="stat_2" class="gt_row gt_center">19 (27%)</td>
+<td headers="stat_3" class="gt_row gt_center">17 (26%)</td>
 <td headers="I vs. II" class="gt_row gt_center"><br /></td>
 <td headers="I vs. III" class="gt_row gt_center"><br /></td></tr>
     <tr><td headers="label" class="gt_row gt_left">    T3</td>
-<td headers="stat_1" class="gt_row gt_center">42 (21%)</td>
-<td headers="stat_2" class="gt_row gt_center">42 (21%)</td>
-<td headers="stat_3" class="gt_row gt_center">44 (22%)</td>
+<td headers="stat_1" class="gt_row gt_center">18 (26%)</td>
+<td headers="stat_2" class="gt_row gt_center">17 (26%)</td>
+<td headers="stat_3" class="gt_row gt_center">18 (27%)</td>
 <td headers="I vs. II" class="gt_row gt_center"><br /></td>
 <td headers="I vs. III" class="gt_row gt_center"><br /></td></tr>
     <tr><td headers="label" class="gt_row gt_left">    T4</td>
-<td headers="stat_1" class="gt_row gt_center">46 (23%)</td>
-<td headers="stat_2" class="gt_row gt_center">47 (24%)</td>
-<td headers="stat_3" class="gt_row gt_center">49 (25%)</td>
+<td headers="stat_1" class="gt_row gt_center">15 (22%)</td>
+<td headers="stat_2" class="gt_row gt_center">13 (19%)</td>
+<td headers="stat_3" class="gt_row gt_center">15 (23%)</td>
 <td headers="I vs. II" class="gt_row gt_center"><br /></td>
 <td headers="I vs. III" class="gt_row gt_center"><br /></td></tr>
   </tbody>
