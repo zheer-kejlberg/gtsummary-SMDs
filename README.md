@@ -183,12 +183,12 @@ focal_smd_level <- function(data, variable, by, tbl, ...) {
 - **pairwise_smd** sets *ref_group = FALSE* and *location = “label”*,
   meaning all possible pairs of groups are compared, and one SMD per
   variable is returned.
-- **pairwise_smd_level** sets *ref_group = TRUE* and *location =
-  “label”*, meaning only group 1 is compared to all other groups, and
-  one SMD per variable is returned.
-- **focal_smd** sets *ref_group = FALSE* and *location = “level”*,
-  meaning all possible pairs of groups are compared, and one SMD per
-  level of cateogrical variables is returned.
+- **pairwise_smd_level** sets *ref_group = FALSE* and *location =
+  “level”*, meaning all possible pairs of groups are compared, and one
+  SMD per level of cateogrical variables is returned.
+- **focal_smd** sets *ref_group = TRUE* and *location = “label”*,
+  meaning only group 1 is compared to all other groups, and one SMD per
+  variable is returned.
 - **focal_smd_level** sets *ref_group = TRUE* and *location = “level”*,
   meaning only group 1 is compared to all other groupsd, and one SMD per
   level of cateogrical variables is returned.
@@ -213,7 +213,7 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd)
 ```
 
-<div id="ewpytmpgsn" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="ljspoquhhv" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -317,7 +317,7 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
 ```
 
-<div id="asserxybrs" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="fztrktknhw" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -442,7 +442,7 @@ trial %>% mutate(
   add_stat(fns = everything() ~ focal_smd)
 ```
 
-<div id="apsafckffg" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="cpxctpdvxf" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>

@@ -179,8 +179,8 @@ focal_smd_level <- function(data, variable, by, tbl, ...) {
 
 ```
 - **pairwise_smd** sets *ref_group = FALSE* and *location = "label"*, meaning all possible pairs of groups are compared, and one SMD per variable is returned.
-- **pairwise_smd_level** sets *ref_group = TRUE* and *location = "label"*, meaning only group 1 is compared to all other groups, and one SMD per variable is returned.
-- **focal_smd** sets *ref_group = FALSE* and *location = "level"*, meaning all possible pairs of groups are compared, and one SMD per level of cateogrical variables is returned.
+- **pairwise_smd_level** sets *ref_group = FALSE* and *location = "level"*, meaning all possible pairs of groups are compared, and one SMD per level of cateogrical variables is returned.
+- **focal_smd** sets *ref_group = TRUE* and *location = "label"*, meaning only group 1 is compared to all other groups, and one SMD per variable is returned.
 - **focal_smd_level** sets *ref_group = TRUE* and *location = "level"*, meaning only group 1 is compared to all other groupsd, and one SMD per level of cateogrical variables is returned.
   
 <br>
