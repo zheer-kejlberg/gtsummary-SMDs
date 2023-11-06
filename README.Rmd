@@ -63,17 +63,17 @@ core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
   data_subsets <- apply(X = pairs, MARGIN = 1, FUN = subsetting, data = data)
   
   # CALCULATE SMD BETWEEN GROUPS WITHIN EACH DATA SUBSET
-  clean_SMD <- possibly(.f = smd::smd, otherwise = NA_real_) 
+  clean_SMD <- purrr::possibly(.f = smd::smd, otherwise = NA_real_) 
   
   if (is_weighted) { 
-    smd_estimates <- map(data_subsets, ~ clean_SMD(.x$variable, .x$by, .x$weight_var))
+    smd_estimates <- purrr::map(data_subsets, ~ clean_SMD(.x$variable, .x$by, .x$weight_var))
   } else {
-    smd_estimates <- map(data_subsets, ~ clean_SMD(.x$variable, .x$by)) 
+    smd_estimates <- purrr::map(data_subsets, ~ clean_SMD(.x$variable, .x$by)) 
   }
   
-  extract_SMD <- possibly(.f = function(x){x$estimate}, otherwise = NA_real_)
+  extract_SMD <- purrr::possibly(.f = function(x){x$estimate}, otherwise = NA_real_)
   
-  smd_estimates <- map_dbl(smd_estimates, ~ extract_SMD(.x))
+  smd_estimates <- purrr::map_dbl(smd_estimates, ~ extract_SMD(.x))
   
   # OUTPUT THE RESULTS
   tibble(comp = comparisons, smd = smd_estimates) %>%

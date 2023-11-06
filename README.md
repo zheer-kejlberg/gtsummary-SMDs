@@ -61,17 +61,17 @@ core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
   data_subsets <- apply(X = pairs, MARGIN = 1, FUN = subsetting, data = data)
   
   # CALCULATE SMD BETWEEN GROUPS WITHIN EACH DATA SUBSET
-  clean_SMD <- possibly(.f = smd::smd, otherwise = NA_real_) 
+  clean_SMD <- purrr::possibly(.f = smd::smd, otherwise = NA_real_) 
   
   if (is_weighted) { 
-    smd_estimates <- map(data_subsets, ~ clean_SMD(.x$variable, .x$by, .x$weight_var))
+    smd_estimates <- purrr::map(data_subsets, ~ clean_SMD(.x$variable, .x$by, .x$weight_var))
   } else {
-    smd_estimates <- map(data_subsets, ~ clean_SMD(.x$variable, .x$by)) 
+    smd_estimates <- purrr::map(data_subsets, ~ clean_SMD(.x$variable, .x$by)) 
   }
   
-  extract_SMD <- possibly(.f = function(x){x$estimate}, otherwise = NA_real_)
+  extract_SMD <- purrr::possibly(.f = function(x){x$estimate}, otherwise = NA_real_)
   
-  smd_estimates <- map_dbl(smd_estimates, ~ extract_SMD(.x))
+  smd_estimates <- purrr::map_dbl(smd_estimates, ~ extract_SMD(.x))
   
   # OUTPUT THE RESULTS
   tibble(comp = comparisons, smd = smd_estimates) %>%
@@ -213,7 +213,7 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd)
 ```
 
-<div id="lhhxlhfaws" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="tlrywyyhew" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -317,7 +317,7 @@ trial %>%
   add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
 ```
 
-<div id="hgjpdcpunc" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="plkrjdfvqx" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -442,7 +442,7 @@ trial %>% mutate(
   add_stat(fns = everything() ~ focal_smd)
 ```
 
-<div id="zzjeluvnhb" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="ebbaftnhki" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
