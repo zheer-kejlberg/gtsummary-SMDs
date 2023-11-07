@@ -86,12 +86,11 @@ core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
 
 ``` r
 clean_smd_data <- function(data, variable, by, tbl) {
-  data_type <- last(class(data))
   tbl_type <- first(class(tbl))
-  if ((data_type != "survey.design" & data_type != "data.frame") | (tbl_type != "tbl_svysummary" & tbl_type != "tbl_summary")) {
+  if (tbl_type != "tbl_svysummary" & tbl_type != "tbl_summary") {
     stop("Inappropriate input to smd function")
   }
-  is_weighted <- data_type == "survey.design"
+  is_weighted <- tbl_type == "tbl_svysummary"
   
   if (is_weighted) {
     data <- data$variables %>% mutate(weight_var = 1 / data$allprob[[1]])
@@ -162,38 +161,16 @@ applied_smd_function <- function(data, variable, by, tbl, ref_group = FALSE, loc
 
 <br>
 
-#### 5) Finally, four caller functions are defined to call the **applied_smd_function()** with preset values for *location* and for *ref_group*
+#### 5) Finally, a caller function is defined to call the **applied_smd_function()** correctly.
 
 ``` r
-pairwise_smd <- function(data, variable, by, tbl, ...) {
-  applied_smd_function(data, variable, by, tbl)
-}
-pairwise_smd_level <- function(data, variable, by, tbl, ...) {
-  applied_smd_function(data, variable, by, tbl, location = "level")
-}
-
-focal_smd <- function(data, variable, by, tbl, ...) {
-  applied_smd_function(data, variable, by, tbl, ref_group = TRUE)
-}
-focal_smd_level <- function(data, variable, by, tbl, ...) {
-  applied_smd_function(data, variable, by, tbl, ref_group = TRUE, location = "level")
+add_SMD <- function(tbl, ref_group = FALSE, location = "label") {
+  fun <- function(data, variable, by, tbl, ...) {
+    applied_smd_function(data, variable, by, tbl, ref_group = ref_group, location = location)
+  }
+  tbl %>% add_stat(fns = everything() ~ fun, location = ~ location)
 }
 ```
-
-- **pairwise_smd** sets *ref_group = FALSE* and *location = “label”*,
-  meaning all possible pairs of groups are compared, and one SMD per
-  variable is returned.
-- **pairwise_smd_level** sets *ref_group = FALSE* and *location =
-  “level”*, meaning all possible pairs of groups are compared, and one
-  SMD per level of cateogrical variables is returned.
-- **focal_smd** sets *ref_group = TRUE* and *location = “label”*,
-  meaning only group 1 is compared to all other groups, and one SMD per
-  variable is returned.
-- **focal_smd_level** sets *ref_group = TRUE* and *location = “level”*,
-  meaning only group 1 is compared to all other groupsd, and one SMD per
-  level of cateogrical variables is returned.
-
-<br>
 
 <br>
 
@@ -203,17 +180,16 @@ focal_smd_level <- function(data, variable, by, tbl, ...) {
 
 #### For unweighted data (with a *tbl_summary()* object), see the following examples:
 
-For one SMD per variable, use either **pairwise_smd** or **focal_smd**.
-There’s no need to specify an input to the location argument of add_stat
-(as this defaults to “label”)
+For one SMD per variable, the location argument does not need to be
+specified (as it defaults to *“label”*).
 
 ``` r
 trial %>% 
   tbl_summary(by = grade, include = c(trt, age, stage)) %>%
-  add_stat(fns = everything() ~ pairwise_smd)
+  add_SMD()
 ```
 
-<div id="tlrywyyhew" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="ahilviocvu" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -307,17 +283,16 @@ trial %>%
 </table>
 </div>
 
-For one SMD per level of every categorical variable, use either
-**pairwise_smd_level** or **focal_smd_level** and specify *location = ~
-“level”* in the *add_stat()* function
+For one SMD per level of every categorical variable, you must specify
+*location = “level”*
 
 ``` r
 trial %>% 
   tbl_summary(by = grade, include = c(trt, age, stage)) %>%
-  add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
+  add_SMD(location = "level")
 ```
 
-<div id="plkrjdfvqx" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="dghmpjzymu" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -423,26 +398,26 @@ trial %>%
 #### For weighted data, use *tbl_svysummary()*:
 
 In this examply we use weights from **WeightIt** package. The **survey**
-package is necessary.
+package delivers the necessary *svydesign* object.
 
 ``` r
 library(WeightIt) # To calculate weights
 library(survey) # To create a surveydesign object (a "weighted" dataset)
 ```
 
-Application of the *add_stat()* function is identical to the
-non-weighted case, but it is applied to a *tbl_svysummary* object
-instead of a *tbl_summary* object.
+Application of the *add_SMD()* function is identical to the non-weighted
+case, but it is applied to a *tbl_svysummary* object instead of a
+*tbl_summary* object.
 
 ``` r
 trial %>% mutate(
   w = weightit(grade ~ age + stage + trt, data = ., focal="I")$weights) %>% # create ATT weights
-  survey::svydesign(~1, data = ., weights = ~w) %>% # creathe the svydesign object
+  survey::svydesign(~1, data = ., weights = ~w) %>% # create the svydesign object
   tbl_svysummary(by = grade, include = c(trt, age, stage)) %>%
-  add_stat(fns = everything() ~ focal_smd)
+  add_SMD(ref_group = TRUE)
 ```
 
-<div id="ebbaftnhki" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="nmpfvyrkib" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -526,6 +501,6 @@ trial %>% mutate(
 </div>
 <center>
 
-###### \*Notice, comparisons are only made here between *group I* and all other groups due to the use of *focal_smd*
+###### \*Notice, comparisons are only made here between *group I* and all other groups due to the use of *ref_group = TRUE*
 
 </center>
