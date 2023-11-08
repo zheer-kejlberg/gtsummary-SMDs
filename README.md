@@ -44,11 +44,11 @@ core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
   if (ref_group) { # IF ref_group, KEEP ONLY PAIRS CONTAINING THE REF GROUP
     pairs <- pairs %>% filter(Var1 == first(levels(groups)))
   }
-  name_comparison <- function(pair) {
+  create_colname <- function(pair) {
     filtered_data <- data %>% filter(by %in% pair) %>% mutate(by = factor(by))
     paste(levels(filtered_data$by)[1], levels(filtered_data$by)[2], sep = " vs. ")
   }
-  comparisons <- apply(pairs, 1, name_comparison)
+  comparisons <- apply(pairs, 1, create_colname)
   
   # CREATE SUBSETS OF DATA
   subsetting <- function(pair, data) {
@@ -115,7 +115,7 @@ clean_smd_data <- function(data, variable, by, tbl) {
 
 <br>
 
-#### 4) Create a function to apply the *core_smd_function()* in various ways for different use cases
+#### 4) Create the **add_SMD()** function to be called by users.
 
 This function first cleans the data and then applies the
 *core_smd_function()* but allows two distinct things to vary according
@@ -140,37 +140,29 @@ to user preference:
   will be set as a reference group,
 
 ``` r
-applied_smd_function <- function(data, variable, by, tbl, ref_group = FALSE, location = "label") {
-  clean_data <- clean_smd_data(data, variable, by, tbl)
-  data <- clean_data[[1]]
-  levels <- clean_data[[2]]
-  is_weighted <- clean_data[[3]]
-  
-  if (location == "label") {
-    output <- core_smd_function(data, is_weighted, ref_group = ref_group)
-  } else { # location == "level"
-    execute_by_level <- function(data, level, is_weighted) {
-      data <- data %>% mutate(variable = variable == level)
-      core_smd_function(data, is_weighted, ref_group = ref_group)
-    }
-    output <- map_dfr(levels, .f = ~ execute_by_level(data, .x, is_weighted))
-  }
-  return(output)
-}
-```
-
-<br>
-
-#### 5) Finally, a caller function is defined to call the **applied_smd_function()** correctly.
-
-``` r
 add_SMD <- function(tbl, ref_group = FALSE, location = "label") {
   fun <- function(data, variable, by, tbl, ...) {
-    applied_smd_function(data, variable, by, tbl, ref_group = ref_group, location = location)
+    clean_data <- clean_smd_data(data, variable, by, tbl)
+    data <- clean_data[[1]]
+    levels <- clean_data[[2]]
+    is_weighted <- clean_data[[3]]
+    
+    if (location == "label") {
+      output <- core_smd_function(data, is_weighted, ref_group = ref_group)
+    } else { # location == "level"
+      execute_by_level <- function(data, level, is_weighted) {
+        data <- data %>% mutate(variable = variable == level)
+        core_smd_function(data, is_weighted, ref_group = ref_group)
+      }
+      output <- map_dfr(levels, .f = ~ execute_by_level(data, .x, is_weighted))
+    }
+    return(output)
   }
   tbl %>% add_stat(fns = everything() ~ fun, location = ~ location)
 }
 ```
+
+<br>
 
 <br>
 
@@ -189,7 +181,7 @@ trial %>%
   add_SMD()
 ```
 
-<div id="ahilviocvu" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="svgtbqegnp" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -292,7 +284,7 @@ trial %>%
   add_SMD(location = "level")
 ```
 
-<div id="dghmpjzymu" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="vbshnbnmrc" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -417,7 +409,7 @@ trial %>% mutate(
   add_SMD(ref_group = TRUE)
 ```
 
-<div id="nmpfvyrkib" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="xcblauiklc" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
