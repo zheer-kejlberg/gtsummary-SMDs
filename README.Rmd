@@ -34,7 +34,7 @@ library(smd) # for calculating the SMDs
 
 ```{r}
 
-core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
+core_smd_function <- function(data, is_weighted, location, ref_group) {
   # MAKE A TABLE OF EVERY POSSIBLE COMBO OF TWO DIFFERENT GROUPS
   groups <- factor(unique(data$by))
   pairs <- expand.grid(groups, groups) %>%
@@ -46,11 +46,19 @@ core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
   if (ref_group) { # IF ref_group, KEEP ONLY PAIRS CONTAINING THE REF GROUP
     pairs <- pairs %>% filter(Var1 == first(levels(groups)))
   }
+  
+  # CREATE COLUMN NAMES FOR EACH CALCULATED SMD
   create_colname <- function(pair) {
     filtered_data <- data %>% filter(by %in% pair) %>% mutate(by = factor(by))
     paste(levels(filtered_data$by)[1], levels(filtered_data$by)[2], sep = " vs. ")
   }
   comparisons <- apply(pairs, 1, create_colname)
+  
+  if (location == "label") {
+    comparisons <- paste0("SMD: ", comparisons)
+  } else {
+    comparisons <- paste0("SMD: ", comparisons, " ")
+  }
   
   # CREATE SUBSETS OF DATA
   subsetting <- function(pair, data) {
@@ -125,9 +133,10 @@ clean_smd_data <- function(data, variable, by, tbl) {
 
 This function first cleans the data and then applies the *core_smd_function()* but allows two distinct things to vary according to user preference:
 
-1) The **location** argument (*"label"* or *"level"*):
+1) The **location** argument (*"label"*, *"level"*, or *"both"*):
 - Specifying **"label"**, you get **one** SMD per variable. For categorical variables, a Mahalanobis distance is calculated between groups.
 - Specifying **"level"**, you get an SMD *for each level* of all categorical variables. This option thus does not produce SMDs for continuous/numeric variables.
+- Specifying **both**, you combine the output of the *level* and the *label* options.
 \
 2) The **ref_group** argument (*TRUE* or *FALSE*):
 - **FALSE**: There is no reference group, and SMDs will be calculated between every possible pair of groups (i.e., groups being defined by the "by" argument in *tbl_summary()* or *tbl_svysummary()*)
@@ -143,17 +152,56 @@ add_SMD <- function(tbl, ref_group = FALSE, location = "label") {
     is_weighted <- clean_data[[3]]
     
     if (location == "label") {
-      output <- core_smd_function(data, is_weighted, ref_group = ref_group)
+      output <- core_smd_function(data, is_weighted, location = location, ref_group = ref_group)
     } else { # location == "level"
       execute_by_level <- function(data, level, is_weighted) {
         data <- data %>% mutate(variable = variable == level)
-        core_smd_function(data, is_weighted, ref_group = ref_group)
+        core_smd_function(data, is_weighted, location = location, ref_group = ref_group)
       }
       output <- map_dfr(levels, .f = ~ execute_by_level(data, .x, is_weighted))
     }
     return(output)
   }
-  tbl %>% add_stat(fns = everything() ~ fun, location = ~ location)
+  
+  if (location == "both") {
+    location <- "label"
+    tbl <- tbl %>% add_stat(fns = everything() ~ fun, location = ~ "label")
+    location <- "level"
+    tbl <- tbl %>% add_stat(fns = everything() ~ fun, location = ~ "level")
+    
+    duplicates <- stringr::str_subset(tbl$table_styling$header$column, "^SMD(\r\n|\r|\n|.)* $")
+    duplicates <- stringr::str_remove(duplicates, " $")
+    
+    for (i in 1:length(duplicates)) {
+      # Temporarily change column names for use by gtsummary
+      column_names <- colnames(tbl$table_body)
+      indices <- which(column_names == duplicates[i] | column_names == paste0(duplicates[i], " "))
+      column_names[indices] <- stringr::str_replace_all(column_names[indices], "[: .]", "_")
+      colnames(tbl$table_body) <- column_names
+      
+      # Adjust the digits of the SMDs and turn into character (while hiding NAs)
+      format_smd <- function(column) {
+        column <- round(column, 3)
+        column <- format(column, nsmall = 3)
+        column[str_detect(column, "NA")] <- ""
+        return(column)
+      }
+      tbl$table_body[[column_names[indices][1]]] <- format_smd(tbl$table_body[[column_names[indices][1]]])
+      tbl$table_body[[column_names[indices][2]]] <- format_smd(tbl$table_body[[column_names[indices][2]]])
+      
+      # Finally merge and reinstate the original column title
+      merge_pattern <- paste0("{",column_names[indices][1],"}{",column_names[indices][2],"}")
+      tbl <- tbl %>%
+        modify_column_merge(pattern = merge_pattern) %>%
+        modify_header(column_names[indices][1] ~ duplicates[i])
+      
+    }
+    
+  } else {
+    tbl <- tbl %>% add_stat(fns = everything() ~ fun, location = ~ location)
+  }
+  return(tbl)
+  
 }
 
 ```
@@ -211,3 +259,13 @@ trial %>% mutate(
 <center>
 ###### \*Notice, comparisons are only made here between *group I* and all other groups due to the use of *ref_group = TRUE*
 </center>
+
+<br> 
+
+Finally, there's the option to set *location = "both"* to get both kinds of SMDs simultaneously.
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+trial %>%
+  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  add_SMD(location = "both")
+
+```
