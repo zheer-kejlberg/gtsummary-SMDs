@@ -136,7 +136,7 @@ This function first cleans the data and then applies the *core_smd_function()* b
 1) The **location** argument (*"label"*, *"level"*, or *"both"*):
 - Specifying **"label"**, you get **one** SMD per variable. For categorical variables, a Mahalanobis distance is calculated between groups.
 - Specifying **"level"**, you get an SMD *for each level* of all categorical variables. This option thus does not produce SMDs for continuous/numeric variables.
-- Specifying **both**, you combine the output of the *level* and the *label* options.
+- Specifying **"both"**, you combine the output of the *level* and the *label* options.
 \
 2) The **ref_group** argument (*TRUE* or *FALSE*):
 - **FALSE**: There is no reference group, and SMDs will be calculated between every possible pair of groups (i.e., groups being defined by the "by" argument in *tbl_summary()* or *tbl_svysummary()*)
