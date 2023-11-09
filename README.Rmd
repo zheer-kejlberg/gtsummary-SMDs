@@ -34,7 +34,7 @@ library(smd) # for calculating the SMDs
 
 ```{r}
 
-core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
+core_smd_function <- function(data, is_weighted, location, ref_group) {
   # MAKE A TABLE OF EVERY POSSIBLE COMBO OF TWO DIFFERENT GROUPS
   groups <- factor(unique(data$by))
   pairs <- expand.grid(groups, groups) %>%
@@ -46,11 +46,19 @@ core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
   if (ref_group) { # IF ref_group, KEEP ONLY PAIRS CONTAINING THE REF GROUP
     pairs <- pairs %>% filter(Var1 == first(levels(groups)))
   }
-  name_comparison <- function(pair) {
+  
+  # CREATE COLUMN NAMES FOR EACH CALCULATED SMD
+  create_colname <- function(pair) {
     filtered_data <- data %>% filter(by %in% pair) %>% mutate(by = factor(by))
     paste(levels(filtered_data$by)[1], levels(filtered_data$by)[2], sep = " vs. ")
   }
-  comparisons <- apply(pairs, 1, name_comparison)
+  comparisons <- apply(pairs, 1, create_colname)
+  
+  if (location == "label") {
+    comparisons <- paste0("SMD: ", comparisons)
+  } else {
+    comparisons <- paste0("SMD: ", comparisons, " ")
+  }
   
   # CREATE SUBSETS OF DATA
   subsetting <- function(pair, data) {
@@ -90,12 +98,11 @@ core_smd_function <- function(data, is_weighted, ref_group = FALSE) {
 ```{r}
 
 clean_smd_data <- function(data, variable, by, tbl) {
-  data_type <- last(class(data))
   tbl_type <- first(class(tbl))
-  if ((data_type != "survey.design" & data_type != "data.frame") | (tbl_type != "tbl_svysummary" & tbl_type != "tbl_summary")) {
+  if (tbl_type != "tbl_svysummary" & tbl_type != "tbl_summary") {
     stop("Inappropriate input to smd function")
   }
-  is_weighted <- data_type == "survey.design"
+  is_weighted <- tbl_type == "tbl_svysummary"
   
   if (is_weighted) {
     data <- data$variables %>% mutate(weight_var = 1 / data$allprob[[1]])
@@ -122,13 +129,14 @@ clean_smd_data <- function(data, variable, by, tbl) {
 <br>
   
 
-#### 4) Create a function to apply the *core_smd_function()* in various ways for different use cases
+#### 4) Create the **add_SMD()** function to be called by users.
 
 This function first cleans the data and then applies the *core_smd_function()* but allows two distinct things to vary according to user preference:
 
-1) The **location** argument (*"label"* or *"level"*):
+1) The **location** argument (*"label"*, *"level"*, or *"both"*):
 - Specifying **"label"**, you get **one** SMD per variable. For categorical variables, a Mahalanobis distance is calculated between groups.
 - Specifying **"level"**, you get an SMD *for each level* of all categorical variables. This option thus does not produce SMDs for continuous/numeric variables.
+- Specifying **"both"**, you combine the output of the *level* and the *label* options.
 \
 2) The **ref_group** argument (*TRUE* or *FALSE*):
 - **FALSE**: There is no reference group, and SMDs will be calculated between every possible pair of groups (i.e., groups being defined by the "by" argument in *tbl_summary()* or *tbl_svysummary()*)
@@ -136,55 +144,71 @@ This function first cleans the data and then applies the *core_smd_function()* b
 
 ```{r}
 
-applied_smd_function <- function(data, variable, by, tbl, ref_group = FALSE, location = "label") {
-  clean_data <- clean_smd_data(data, variable, by, tbl)
-  data <- clean_data[[1]]
-  levels <- clean_data[[2]]
-  is_weighted <- clean_data[[3]]
-  
-  if (location == "label") {
-    output <- core_smd_function(data, is_weighted, ref_group = ref_group)
-  } else { # location == "level"
-    execute_by_level <- function(data, level, is_weighted) {
-      data <- data %>% mutate(variable = variable == level)
-      core_smd_function(data, is_weighted, ref_group = ref_group)
-    }
-    output <- map_dfr(levels, .f = ~ execute_by_level(data, .x, is_weighted))
-  }
-  return(output)
-}
-
-```
-  
-<br>
-  
-
-#### 5) Finally, four caller functions are defined to call the **applied_smd_function()** with preset values for *location* and for *ref_group*
-
-```{r}
-
-pairwise_smd <- function(data, variable, by, tbl, ...) {
-  applied_smd_function(data, variable, by, tbl)
-}
-pairwise_smd_level <- function(data, variable, by, tbl, ...) {
-  applied_smd_function(data, variable, by, tbl, location = "level")
-}
-
-focal_smd <- function(data, variable, by, tbl, ...) {
-  applied_smd_function(data, variable, by, tbl, ref_group = TRUE)
-}
-focal_smd_level <- function(data, variable, by, tbl, ...) {
-  applied_smd_function(data, variable, by, tbl, ref_group = TRUE, location = "level")
-}
-
-```
-- **pairwise_smd** sets *ref_group = FALSE* and *location = "label"*, meaning all possible pairs of groups are compared, and one SMD per variable is returned.
-- **pairwise_smd_level** sets *ref_group = FALSE* and *location = "level"*, meaning all possible pairs of groups are compared, and one SMD per level of cateogrical variables is returned.
-- **focal_smd** sets *ref_group = TRUE* and *location = "label"*, meaning only group 1 is compared to all other groups, and one SMD per variable is returned.
-- **focal_smd_level** sets *ref_group = TRUE* and *location = "level"*, meaning only group 1 is compared to all other groupsd, and one SMD per level of cateogrical variables is returned.
-  
-<br>
+add_SMD <- function(tbl, ref_group = FALSE, location = "label") {
+  fun <- function(data, variable, by, tbl, ...) {
+    clean_data <- clean_smd_data(data, variable, by, tbl)
+    data <- clean_data[[1]]
+    levels <- clean_data[[2]]
+    is_weighted <- clean_data[[3]]
     
+    if (location == "label") {
+      output <- core_smd_function(data, is_weighted, location = location, ref_group = ref_group)
+    } else { # location == "level"
+      execute_by_level <- function(data, level, is_weighted) {
+        data <- data %>% mutate(variable = variable == level)
+        core_smd_function(data, is_weighted, location = location, ref_group = ref_group)
+      }
+      output <- map_dfr(levels, .f = ~ execute_by_level(data, .x, is_weighted))
+    }
+    return(output)
+  }
+  
+  if (location == "both") {
+    location <- "label"
+    tbl <- tbl %>% add_stat(fns = everything() ~ fun, location = ~ "label")
+    location <- "level"
+    tbl <- tbl %>% add_stat(fns = everything() ~ fun, location = ~ "level")
+    
+    duplicates <- stringr::str_subset(tbl$table_styling$header$column, "^SMD(\r\n|\r|\n|.)* $")
+    duplicates <- stringr::str_remove(duplicates, " $")
+    
+    for (i in 1:length(duplicates)) {
+      # Temporarily change column names for use by gtsummary
+      column_names <- colnames(tbl$table_body)
+      indices <- which(column_names == duplicates[i] | column_names == paste0(duplicates[i], " "))
+      column_names[indices] <- stringr::str_replace_all(column_names[indices], "[: .]", "_")
+      colnames(tbl$table_body) <- column_names
+      
+      # Adjust the digits of the SMDs and turn into character (while hiding NAs)
+      format_smd <- function(column) {
+        column <- round(column, 3)
+        column <- format(column, nsmall = 3)
+        column[str_detect(column, "NA")] <- ""
+        return(column)
+      }
+      tbl$table_body[[column_names[indices][1]]] <- format_smd(tbl$table_body[[column_names[indices][1]]])
+      tbl$table_body[[column_names[indices][2]]] <- format_smd(tbl$table_body[[column_names[indices][2]]])
+      
+      # Finally merge and reinstate the original column title
+      merge_pattern <- paste0("{",column_names[indices][1],"}{",column_names[indices][2],"}")
+      tbl <- tbl %>%
+        modify_column_merge(pattern = merge_pattern) %>%
+        modify_header(column_names[indices][1] ~ duplicates[i])
+      
+    }
+    
+  } else {
+    tbl <- tbl %>% add_stat(fns = everything() ~ fun, location = ~ location)
+  }
+  return(tbl)
+  
+}
+
+```
+  
+<br>
+  
+  
 <br>
   
 
@@ -194,18 +218,18 @@ focal_smd_level <- function(data, variable, by, tbl, ...) {
   
 #### For unweighted data (with a *tbl_summary()* object), see the following examples:
 
-For one SMD per variable, use either **pairwise_smd** or **focal_smd**. There's no need to specify an input to the location argument of add_stat (as this defaults to "label")
+For one SMD per variable, the location argument does not need to be specified (as it defaults to *"label"*).
 ```{r, warning=FALSE, message=FALSE, error=FALSE}
 trial %>% 
   tbl_summary(by = grade, include = c(trt, age, stage)) %>%
-  add_stat(fns = everything() ~ pairwise_smd)
+  add_SMD()
 ```
 
-For one SMD per level of every categorical variable, use either **pairwise_smd_level** or **focal_smd_level** and specify *location = ~ "level"* in the *add_stat()* function
+For one SMD per level of every categorical variable, you must specify *location = "level"*
 ```{r, warning=FALSE, message=FALSE, error=FALSE}
 trial %>% 
   tbl_summary(by = grade, include = c(trt, age, stage)) %>%
-  add_stat(fns = everything() ~ pairwise_smd_level, location = ~ "level")
+  add_SMD(location = "level")
 ```
 <center>
 ###### \*Notice, there are no SMDs for non-categorical variables due to the use of *pairwise_smd_level*
@@ -216,22 +240,32 @@ trial %>%
   
 #### For weighted data, use *tbl_svysummary()*:
 
-In this examply we use weights from **WeightIt** package. The **survey** package is necessary.
+In this examply we use weights from **WeightIt** package. The **survey** package delivers the necessary *svydesign* object.
 ```{r, results='hide', warning=FALSE, message=FALSE, error=FALSE}
 
 library(WeightIt) # To calculate weights
 library(survey) # To create a surveydesign object (a "weighted" dataset)
 ```
 
-Application of the *add_stat()* function is identical to the non-weighted case, but it is applied to a *tbl_svysummary* object instead of a *tbl_summary* object.
+Application of the *add_SMD()* function is identical to the non-weighted case, but it is applied to a *tbl_svysummary* object instead of a *tbl_summary* object.
 ```{r, warning=FALSE, message=FALSE, error=FALSE}
 trial %>% mutate(
   w = weightit(grade ~ age + stage + trt, data = ., focal="I")$weights) %>% # create ATT weights
-  survey::svydesign(~1, data = ., weights = ~w) %>% # creathe the svydesign object
+  survey::svydesign(~1, data = ., weights = ~w) %>% # create the svydesign object
   tbl_svysummary(by = grade, include = c(trt, age, stage)) %>%
-  add_stat(fns = everything() ~ focal_smd)
+  add_SMD(ref_group = TRUE)
 
 ```
 <center>
-###### \*Notice, comparisons are only made here between *group I* and all other groups due to the use of *focal_smd*
+###### \*Notice, comparisons are only made here between *group I* and all other groups due to the use of *ref_group = TRUE*
 </center>
+
+<br> 
+
+Finally, there's the option to set *location = "both"* to get both kinds of SMDs simultaneously.
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+trial %>%
+  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  add_SMD(location = "both")
+
+```
