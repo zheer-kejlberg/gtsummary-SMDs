@@ -25,6 +25,7 @@ First, wrapper functions are defined for the core functionality (e.g., *core_smd
 library(gtsummary) # For creating a baseline characteristics table
 library(tidyverse) # For data wrangling and misc.
 library(smd) # for calculating the SMDs
+library(purrr) # for vectorised functions
 
 ```
 
@@ -34,7 +35,7 @@ library(smd) # for calculating the SMDs
 
 ```{r}
 
-core_smd_function <- function(data, is_weighted, location, ref_group) {
+core_smd_function <- function(data, is_weighted, location, ref_group, ci, decimals) {
   # MAKE A TABLE OF EVERY POSSIBLE COMBO OF TWO DIFFERENT GROUPS
   groups <- factor(unique(data$by))
   pairs <- expand.grid(groups, groups) %>%
@@ -50,15 +51,10 @@ core_smd_function <- function(data, is_weighted, location, ref_group) {
   # CREATE COLUMN NAMES FOR EACH CALCULATED SMD
   create_colname <- function(pair) {
     filtered_data <- data %>% filter(by %in% pair) %>% mutate(by = factor(by))
-    paste(levels(filtered_data$by)[1], levels(filtered_data$by)[2], sep = " vs. ")
+    paste0("SMD: ", levels(filtered_data$by)[1], " vs. ", levels(filtered_data$by)[2])
   }
   comparisons <- apply(pairs, 1, create_colname)
-  
-  if (location == "label") {
-    comparisons <- paste0("SMD: ", comparisons)
-  } else {
-    comparisons <- paste0("SMD: ", comparisons, " ")
-  }
+  if (location == "level") { comparisons <- paste0(comparisons, " ") }
   
   # CREATE SUBSETS OF DATA
   subsetting <- function(pair, data) {
@@ -67,21 +63,28 @@ core_smd_function <- function(data, is_weighted, location, ref_group) {
       mutate(by = factor(by)) %>%
       droplevels()
   }
-  
   data_subsets <- apply(X = pairs, MARGIN = 1, FUN = subsetting, data = data)
   
   # CALCULATE SMD BETWEEN GROUPS WITHIN EACH DATA SUBSET
-  clean_SMD <- purrr::possibly(.f = smd::smd, otherwise = NA_real_) 
-  
-  if (is_weighted) { 
-    smd_estimates <- purrr::map(data_subsets, ~ clean_SMD(.x$variable, .x$by, .x$weight_var))
-  } else {
-    smd_estimates <- purrr::map(data_subsets, ~ clean_SMD(.x$variable, .x$by)) 
+  calc_SMD <- function(data_subset, is_weighted, ci, decimals) {
+    res <- smd::smd(data_subset$variable, data_subset$by, std.error = T)
+    if (is_weighted) {
+      res <- smd::smd(data_subset$variable, data_subset$by, data_subset$weight_var, std.error = T) 
+    }
+    res_smd <- res[[2]] %>% round(decimals) %>% format(nsmall = decimals)
+    ci_lower <- (res[[2]] - 1.96 * res[[3]]) %>% round(decimals) %>% format(nsmall = decimals)
+    ci_upper <- (res[[2]] + 1.96 * res[[3]]) %>% round(decimals) %>% format(nsmall = decimals)
+    
+    if (ci == TRUE) {
+      output <- paste(res_smd, " [", ci_lower, ";", ci_upper, "]", sep = "")
+      return(output)
+    } else {
+      return(res_smd)
+    }
   }
+  calc_SMD <- purrr::possibly(.f = calc_SMD, otherwise = NA_character_)
   
-  extract_SMD <- purrr::possibly(.f = function(x){x$estimate}, otherwise = NA_real_)
-  
-  smd_estimates <- purrr::map_dbl(smd_estimates, ~ extract_SMD(.x))
+  smd_estimates <- purrr::map_chr(data_subsets, ~ calc_SMD(., is_weighted, ci, decimals))
   
   # OUTPUT THE RESULTS
   tibble(comp = comparisons, smd = smd_estimates) %>%
@@ -144,7 +147,7 @@ This function first cleans the data and then applies the *core_smd_function()* b
 
 ```{r}
 
-add_SMD <- function(tbl, ref_group = FALSE, location = "label") {
+add_SMD <- function(tbl, ref_group = FALSE, location = "label", ci = FALSE, decimals = 2) {
   fun <- function(data, variable, by, tbl, ...) {
     clean_data <- clean_smd_data(data, variable, by, tbl)
     data <- clean_data[[1]]
@@ -152,11 +155,15 @@ add_SMD <- function(tbl, ref_group = FALSE, location = "label") {
     is_weighted <- clean_data[[3]]
     
     if (location == "label") {
-      output <- core_smd_function(data, is_weighted, location = location, ref_group = ref_group)
+      output <- core_smd_function(data, is_weighted, 
+                                  location = location, ref_group = ref_group, 
+                                  ci = ci, decimals = decimals)
     } else { # location == "level"
       execute_by_level <- function(data, level, is_weighted) {
         data <- data %>% mutate(variable = variable == level)
-        core_smd_function(data, is_weighted, location = location, ref_group = ref_group)
+        core_smd_function(data, is_weighted, 
+                          location = location, ref_group = ref_group, 
+                          ci = ci, decimals = decimals)
       }
       output <- map_dfr(levels, .f = ~ execute_by_level(data, .x, is_weighted))
     }
@@ -181,9 +188,9 @@ add_SMD <- function(tbl, ref_group = FALSE, location = "label") {
       
       # Adjust the digits of the SMDs and turn into character (while hiding NAs)
       format_smd <- function(column) {
-        column <- round(column, 3)
-        column <- format(column, nsmall = 3)
-        column[str_detect(column, "NA")] <- ""
+        #column <- round(column, 3)
+        #column <- format(column, nsmall = 3)
+        column[is.na(column)] <- ""
         return(column)
       }
       tbl$table_body[[column_names[indices][1]]] <- format_smd(tbl$table_body[[column_names[indices][1]]])
@@ -211,7 +218,10 @@ add_SMD <- function(tbl, ref_group = FALSE, location = "label") {
   
 <br>
   
-
+  
+<br>
+  
+  
 ### Using the functions with gtsummary.
   
 <br>
@@ -221,20 +231,43 @@ add_SMD <- function(tbl, ref_group = FALSE, location = "label") {
 For one SMD per variable, the location argument does not need to be specified (as it defaults to *"label"*).
 ```{r, warning=FALSE, message=FALSE, error=FALSE}
 trial %>% 
-  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  tbl_summary(by = grade, include = c(age, stage)) %>%
   add_SMD()
 ```
-
+  
+<br>
+  
 For one SMD per level of every categorical variable, you must specify *location = "level"*
 ```{r, warning=FALSE, message=FALSE, error=FALSE}
 trial %>% 
-  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
+  tbl_summary(by = grade, include = c(age, stage)) %>%
   add_SMD(location = "level")
 ```
 <center>
-###### \*Notice, there are no SMDs for non-categorical variables due to the use of *pairwise_smd_level*
+###### \*Notice, this only gives SMDs on levels of *categorical* variables.
 </center>
 \
+  
+<br> 
+  
+There's also the option to set *location = "both"* to get both kinds of SMDs simultaneously. 
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+trial %>%
+  tbl_summary(by = grade, include = c(age, stage)) %>%
+  add_SMD(location = "both")
+
+```
+  
+<br>
+  
+To get confidence intervals, add *ci = TRUE*. With the *decimals* argument, you can adjust the number of significant digits displayed.
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+trial %>% 
+  tbl_summary(by = grade, include = c(age, stage)) %>%
+  add_SMD(location = "level", ci = TRUE, decimals = 3)
+```
+  
+<br>
   
 <br>
   
@@ -252,20 +285,10 @@ Application of the *add_SMD()* function is identical to the non-weighted case, b
 trial %>% mutate(
   w = weightit(grade ~ age + stage + trt, data = ., focal="I")$weights) %>% # create ATT weights
   survey::svydesign(~1, data = ., weights = ~w) %>% # create the svydesign object
-  tbl_svysummary(by = grade, include = c(trt, age, stage)) %>%
+  tbl_svysummary(by = grade, include = c(age, stage)) %>%
   add_SMD(ref_group = TRUE)
 
 ```
 <center>
 ###### \*Notice, comparisons are only made here between *group I* and all other groups due to the use of *ref_group = TRUE*
 </center>
-
-<br> 
-
-Finally, there's the option to set *location = "both"* to get both kinds of SMDs simultaneously.
-```{r, warning=FALSE, message=FALSE, error=FALSE}
-trial %>%
-  tbl_summary(by = grade, include = c(trt, age, stage)) %>%
-  add_SMD(location = "both")
-
-```
