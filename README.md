@@ -147,13 +147,18 @@ to user preference:
 
 - **FALSE**: There is no reference group, and SMDs will be calculated
   between every possible pair of groups (i.e., groups being defined by
-  the “by” argument in *tbl_summary()* or *tbl_svysummary()*)
+  the “by” argument in *tbl_summary()* or *tbl_svysummary()*).
 - **TRUE**: The first group (the first level of the variable given in
   the “by” argument - which is also the leftmost group in the table)
-  will be set as a reference group,
+  will be set as a reference group.  
+
+3)  The **ci** argument (*logical*) specifies whether to print
+    confidence intervals for the SMDs.  
+4)  The **decimals** argument (*integer*) specifies the number of
+    significant digits to print for SMDs (and CIs).
 
 ``` r
-add_SMD <- function(tbl, ref_group = FALSE, location = "label", ci = FALSE, decimals = 2) {
+add_SMD <- function(tbl, location = "label", ref_group = FALSE, ci = FALSE, decimals = 2) {
   fun <- function(data, variable, by, tbl, ...) {
     clean_data <- clean_smd_data(data, variable, by, tbl)
     data <- clean_data[[1]]
@@ -239,7 +244,7 @@ trial %>%
   add_SMD()
 ```
 
-<div id="gsfkfpoetm" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="zdacocbwbb" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -323,7 +328,7 @@ trial %>%
   add_SMD(location = "level")
 ```
 
-<div id="zthreugmfq" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="fnwqabbbhr" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -414,7 +419,7 @@ trial %>%
   add_SMD(location = "both")
 ```
 
-<div id="lqzuppewln" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="zrirscksjo" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -498,7 +503,7 @@ trial %>%
   add_SMD(location = "level", ci = TRUE, decimals = 3)
 ```
 
-<div id="jvuswzogiy" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="rqweusyhkf" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
@@ -597,7 +602,7 @@ trial %>% mutate(
   add_SMD(ref_group = TRUE)
 ```
 
-<div id="rpqsyfejic" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<div id="vfaihckyfe" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 
 <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
   <thead>
