@@ -35,7 +35,7 @@ library(purrr) # for vectorised functions
 
 ```{r}
 
-core_smd_function <- function(data, is_weighted, location, ref_group, ci, decimals) {
+core_smd_function <- function(data, is_weighted, location, ref_group, ci, decimals, ci_bracket, ci_sep) {
   # MAKE A TABLE OF EVERY POSSIBLE COMBO OF TWO DIFFERENT GROUPS
   groups <- factor(unique(data$by))
   pairs <- expand.grid(groups, groups) %>%
@@ -76,7 +76,9 @@ core_smd_function <- function(data, is_weighted, location, ref_group, ci, decima
     ci_upper <- (res[[2]] + 1.96 * res[[3]]) %>% round(decimals) %>% format(nsmall = decimals)
     
     if (ci == TRUE) {
-      output <- paste(res_smd, " [", ci_lower, ";", ci_upper, "]", sep = "")
+      output <- paste(res_smd, " ", 
+                      substr(ci_bracket,1,1), ci_lower, ci_sep, ci_upper, substr(ci_bracket,2,2), 
+                      sep = "")
       return(output)
     } else {
       return(res_smd)
@@ -148,10 +150,14 @@ This function first cleans the data and then applies the *core_smd_function()* b
 3) The **ci** argument (*logical*) specifies whether to print confidence intervals for the SMDs.
 \
 4) The **decimals** argument (*integer*) specifies the number of significant digits to print for SMDs (and CIs).
+\
+5) The **ci_bracket** argument can be used to change the bracket type around the confidence intervals.
+\
+6) The **ci_sep** argument changes the separator between the lower and upper limits of confidence intervals.
 
 ```{r}
 
-add_SMD <- function(tbl, location = "label", ref_group = FALSE, ci = FALSE, decimals = 2) {
+add_SMD <- function(tbl, location = "label", ref_group = FALSE, ci = FALSE, decimals = 2, ci_bracket = "()", ci_sep=", ") {
   fun <- function(data, variable, by, tbl, ...) {
     clean_data <- clean_smd_data(data, variable, by, tbl)
     data <- clean_data[[1]]
@@ -161,13 +167,15 @@ add_SMD <- function(tbl, location = "label", ref_group = FALSE, ci = FALSE, deci
     if (location == "label") {
       output <- core_smd_function(data, is_weighted, 
                                   location = location, ref_group = ref_group, 
-                                  ci = ci, decimals = decimals)
+                                  ci = ci, decimals = decimals,
+                                  ci_bracket = ci_bracket, ci_sep = ci_sep)
     } else { # location == "level"
       execute_by_level <- function(data, level, is_weighted) {
         data <- data %>% mutate(variable = variable == level)
         core_smd_function(data, is_weighted, 
                           location = location, ref_group = ref_group, 
-                          ci = ci, decimals = decimals)
+                          ci = ci, decimals = decimals,
+                          ci_bracket = ci_bracket, ci_sep = ci_sep)
       }
       output <- map_dfr(levels, .f = ~ execute_by_level(data, .x, is_weighted))
     }
@@ -273,11 +281,20 @@ trial %>%
   
 <br>
   
+To change the formatting of the confidence intervals, use the *ci_bracket* and *ci_sep* arguments:
+```{r, warning=FALSE, message=FALSE, error=FALSE}
+  trial %>% 
+  tbl_summary(by = grade, include = c(age, stage)) %>%
+  add_SMD(location = "level", ci = TRUE, ci_bracket="[]", ci_sep=";")
+```
+  
+<br>
+  
 <br>
   
 #### For weighted data, use *tbl_svysummary()*:
 
-In this examply we use weights from **WeightIt** package. The **survey** package delivers the necessary *svydesign* object.
+In this example, we use weights from **WeightIt** package. The **survey** package delivers the necessary *svydesign* object.
 ```{r, results='hide', warning=FALSE, message=FALSE, error=FALSE}
 
 library(WeightIt) # To calculate weights
